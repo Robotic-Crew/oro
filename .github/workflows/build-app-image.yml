@@ -11,6 +11,8 @@ on:
   pull_request:
     paths:
       - "app/**"
+      - "packages/**"
+      - "plugins/**"
       - "scripts/build-app-image.sh"
       - "scripts/smoke-test-app-image.sh"
       - ".github/workflows/build-app-image.yml"
@@ -89,6 +91,10 @@ jobs:
         with:
           context: app
           file: app/Dockerfile
+          # file: deps of package.json (see the Dockerfile)
+          build-contexts: |
+            packages=packages
+            plugins=plugins
           load: true
           push: false
           tags: ${{ steps.meta.outputs.tags }}

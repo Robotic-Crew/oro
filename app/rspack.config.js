@@ -16,6 +16,10 @@
 
 const { defineConfig } = require("@meteorjs/rspack");
 
+// The plugin SDK and plugins (oro-plugin-*): npm packages, `file:` deps in
+// development, that ship untranspiled sources (JSX, CommonJS)
+const PLUGIN_PACKAGES = /[\\/]node_modules[\\/]oro-plugin-[^\\/]+[\\/]/;
+
 /**
  * Rspack configuration for Meteor projects.
  *
@@ -45,9 +49,28 @@ module.exports = defineConfig((Meteor) => {
         // loader while still exposing the full compiler API we use.
         handlebars: "handlebars/dist/handlebars.js",
       },
+      // Keep `file:` deps (plugins, the plugin SDK; symlinked from ../plugins and
+      // ../packages) under node_modules instead of their real path, so they
+      // resolve and build exactly as when installed from a registry.
+      symlinks: false,
     },	  
     module: {
       rules: [
+        // Meteor's swc rule skips node_modules; compile plugin packages too.
+        // `isModule: 'unknown'` keeps CommonJS files (the SDK, plugins' shared/)
+        // as CommonJS: on the client swc injects ESM helper imports otherwise,
+        // which leaves them with no exports.
+        {
+          test: /\.(?:c?js|jsx)$/i,
+          include: PLUGIN_PACKAGES,
+          loader: "builtin:swc-loader",
+          options: { ...Meteor.swcConfigOptions, isModule: "unknown" },
+        },
+        // Plugins import their .proto files as text and register them at runtime
+        {
+          test: /\.proto$/i,
+          type: "asset/source",
+        },
         // Add support for importing SVGs as React components
         {
           test: /\.svg$/i,

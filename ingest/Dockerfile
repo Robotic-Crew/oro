@@ -34,6 +34,10 @@ USER node
 WORKDIR /home/node/src
 
 COPY --chown=node:node package.json package-lock.json .npmrc ./
+# Plugin SDK and bundled plugins are `file:../packages/*` and `file:../plugins/*`
+# deps; they come in as BuildKit named contexts (see scripts/build-ingest-image.sh).
+COPY --from=packages --chown=node:node . /home/node/packages
+COPY --from=plugins --chown=node:node . /home/node/plugins
 
 # @openrobops/iso21423 comes from npm.pkg.github.com (scope mapped in .npmrc),
 # which requires auth even for public packages. The token arrives as a
@@ -61,6 +65,9 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY --from=deps --chown=1000:1000 /home/node/src/node_modules ./node_modules
+# node_modules symlinks the file: deps as ../../packages/* and ../../plugins/*
+COPY --from=deps --chown=1000:1000 /home/node/packages /packages
+COPY --from=deps --chown=1000:1000 /home/node/plugins /plugins
 COPY --chown=1000:1000 package.json package-lock.json .babelrc ./
 COPY --chown=1000:1000 src ./src
 

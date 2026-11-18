@@ -5,6 +5,8 @@ on:
     paths: 
     - .github/workflows/test-ingest.yaml
     - 'ingest/**'
+    - 'packages/**'
+    - 'plugins/**'
     # Include all files copied by import.sh
     - 'app/imports/shared/**'
     - 'app/private/oro.proto'

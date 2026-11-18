@@ -15,6 +15,8 @@ on:
   pull_request:
     paths:
       - "ingest/**"
+      - "packages/**"
+      - "plugins/**"
       # Shared sources copied into the build context by ingest/import.sh
       - "app/imports/shared/**"
       - "app/private/oro.proto"
@@ -96,6 +98,10 @@ jobs:
         with:
           context: ingest
           file: ingest/Dockerfile
+          # file: deps of package.json (see the Dockerfile)
+          build-contexts: |
+            packages=packages
+            plugins=plugins
           load: true
           push: false
           tags: ${{ steps.meta.outputs.tags }}

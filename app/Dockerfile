@@ -42,6 +42,10 @@ WORKDIR /home/node/src
 # against the Atmosphere package set.
 COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node .meteor/ ./.meteor/
+# Plugin SDK and bundled plugins are `file:../packages/*` and `file:../plugins/*`
+# deps; they come in as BuildKit named contexts (see scripts/build-app-image.sh).
+COPY --from=packages --chown=node:node . /home/node/packages
+COPY --from=plugins --chown=node:node . /home/node/plugins
 
 RUN meteor npm ci
 

@@ -40,6 +40,8 @@ export GH_TOKEN="${GH_TOKEN:-$(sed -n 's|^//npm\.pkg\.github\.com/:_authToken=||
 
 docker build \
   -f ingest/Dockerfile \
+  --build-context packages=packages \
+  --build-context plugins=plugins \
   --secret id=gh_token,env=GH_TOKEN \
   -t "$TAG" \
   ingest

@@ -21,7 +21,7 @@
  * Ingest-side MQTT manager
  */
 import mqtt from 'mqtt';
-import { loadSync } from 'protobufjs';
+import { loadSync, parse } from 'protobufjs';
 import moment from 'moment';
 import fs from 'fs';
 // ORO imports
@@ -53,6 +53,17 @@ const protoRoot = loadSync(__dirname + '/../shared/oro.proto');
 const RobotFilesUpdateMessage = protoRoot.lookupType('oro.RobotFilesUpdateMessage');
 const OdometryDataMessage = protoRoot.lookupType('oro.OdometryDataMessage');
 const Echo = protoRoot.lookupType('oro.Echo');
+
+/**
+ * Adds a plugin's .proto source (package oro.<pluginId>) to the shared root, so
+ * its messages resolve through OroMqtt#lookupType.
+ */
+const addedProtoSources = new Set();
+export const addProtoSource = (source) => {
+  if (addedProtoSources.has(source)) return;
+  parse(source, protoRoot);
+  addedProtoSources.add(source);
+};
 
 /**
  * Handles communication with a specific Mqtt broker

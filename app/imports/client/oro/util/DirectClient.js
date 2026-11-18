@@ -27,6 +27,7 @@ import { isObject, isArray, isEmpty, isString, flatMap } from 'lodash';
 import mqtt from 'mqtt';
 import protobuf from 'protobufjs';
 // ORO Modules
+import { getPluginRegistry } from '../../../lib/plugins/registry';
 
 // Mqtt client self-subscribes to 'echo' topic.
 const ECHO_SUBTOPIC = 'echo';
@@ -48,7 +49,11 @@ const _typeStrings = {};
  */
 const getProtobufType = async (typeString) => {
   if (!('root' in _typeStrings)) {
-    _typeStrings.root = await protobuf.load('/oro.proto');
+    const root = await protobuf.load('/oro.proto');
+    // Plugin messages live in their own packages (oro.<pluginId>), so they are
+    // looked up as e.g. getProtobufType('example.Hello').
+    getPluginRegistry().getProtos().forEach(({ source }) => protobuf.parse(source, root));
+    _typeStrings.root = root;
   }
   if (!(typeString in _typeStrings)) {
     _typeStrings[typeString] = _typeStrings.root.lookupType('oro.' + typeString);

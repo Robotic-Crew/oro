@@ -59,6 +59,7 @@ import { assertValidSettings } from '../imports/server/settingsValidation';
 import EventLog from '../imports/server/eventLog/eventLogger';
 import DbEventStore from '../imports/server/eventLog/meteorDbEventStore';
 import { VERSION } from '../imports/shared/version';
+import { loadServerPlugins, startServerPlugins } from '../imports/server/plugins';
 
 // Register accounts hooks at module level — before any login attempt
 registerAccountsHooks();
@@ -80,6 +81,9 @@ const oroAppMain = async () => {
   // Validate critical settings before doing anything else. Throws (aborting
   // startup) if e.g. the credential encryption key is missing or malformed.
   assertValidSettings();
+
+  // Register plugins before anything reads the plugin registry (ConfigAPI, protos)
+  loadServerPlugins();
 
   // Set-up instance ID
   instanceValues.serverId = process.env.POD_ID || uuidv4();
@@ -151,6 +155,9 @@ const oroAppMain = async () => {
 
   // Wire alerts -> incidents -> event log.
   initIncidentsManagement();
+
+  // Plugins' start hooks, now that core services are up
+  await startServerPlugins({ mqtt });
 
   // Load and start modules
   // moduleInstances.RobotLocalizationModule.load();

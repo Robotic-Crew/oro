@@ -41,6 +41,8 @@
     "object-hash": "^3.0.0",
     "ol": "10.11.0",
     "ol-rotate-feature": "^3.3.0",
+    "oro-plugin-example": "file:../plugins/oro-plugin-example",
+    "oro-plugin-sdk": "file:../packages/oro-plugin-sdk",
     "plotly.js-basic-dist": "^3.7.0",
     "proj4": "^2.22.0",
     "prop-types": "^15.8.1",

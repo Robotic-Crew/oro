@@ -58,6 +58,7 @@ import {
 } from './server/modules';
 import IsoRobotsModule from './server/isoRobots';
 import { isoModeEnabled } from './server/isoRobots/config';
+import { loadIngestPlugins, startIngestPlugins } from './plugins';
 
 // Read settings from configuration file
 // TODO Allow passing configuration file path from an environment variable
@@ -102,6 +103,8 @@ async function run() {
   await mongo.init(settings.mongo);
 
   mqtt = new OroMqtt(); // Created but not yet started (connected)
+  // Register plugins (and their protos) before connecting
+  const plugins = loadIngestPlugins({ settings });
   // UpstreamModule is disabled by default. When enabled it forwards local
   // robot telemetry to an upstream MQTT broker (another ORO / InOrbit).
   // This module is started earlier and we attempt to wait for connection so that any incoming mqtt message
@@ -192,6 +195,9 @@ async function run() {
   // } else {
   //   console.warn('ImagesModule is disabled');
   // }
+
+  // Plugins run in both ISO and non-ISO modes
+  await startIngestPlugins(plugins, { mqtt, mongo, settings });
 
   const derivedAttributesService = new DerivedAttributesService({});
   await derivedAttributesService.init({ workerQueue: queue });

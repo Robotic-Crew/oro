@@ -38,6 +38,7 @@ import { useFleetRobotIds } from '../hooks/useFleetRobotIds';
 import CustomDataWidget from '../robotWidgets/CustomDataWidget';
 // import ImageWidget from '../robotWidgets/ImageWidget';
 import { WIDGET_TYPES, WIDGET_TYPES_IDS } from '../../../lib/uiPreferences';
+import { getPluginRegistry } from '../../../lib/plugins/registry';
 import NavigationDetail from '../navigationWidgets/NavigationDetail';
 import TimelineWidget from '../robotWidgets/TimelineWidget';
 import VitalsWidget from '../robotWidgets/VitalsWidget';
@@ -923,7 +924,7 @@ const Dashboard = ({ dashboardSpec, context, setContext, switchTo }) => {
             context={context}
             setContext={setContext}
             switchTo={switchTo}
-            widgetFactory={WIDGET_FACTORY}
+            widgetFactory={getWidgetFactory()}
             toolbarFactory={TOOLBAR_FACTORY}
           />
         </FullscreenProvider>
@@ -937,6 +938,28 @@ Dashboard.propTypes = {
   context: PropTypes.object.isRequired,
   setContext: PropTypes.func.isRequired,
   switchTo: PropTypes.func.isRequired,
+};
+
+// Core widgets plus the ones registered by plugins (core wins on conflicts).
+// Built on first render, after plugins are loaded; the registry is frozen by then.
+let widgetFactoryWithPlugins;
+const getWidgetFactory = () => {
+  if (!widgetFactoryWithPlugins) {
+    widgetFactoryWithPlugins = { ...getPluginRegistry().getWidgetFactories(), ...WIDGET_FACTORY };
+  }
+  return widgetFactoryWithPlugins;
+};
+
+// Context accessors, exposed to plugin widgets through the client plugin ctx.
+export {
+  getRobotId,
+  setRobotId,
+  getStartTime,
+  setStartTime,
+  getTimeRangeMs,
+  setTimeRangeMs,
+  getTimeFocus,
+  setTimeFocus,
 };
 
 export default Dashboard;

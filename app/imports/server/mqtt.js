@@ -21,7 +21,7 @@
 import { Meteor } from 'meteor/meteor';
 import { Random } from 'meteor/random';
 import mqtt from 'mqtt';
-import { loadSync } from 'protobufjs';
+import { loadSync, parse } from 'protobufjs';
 import moment from 'moment';
 // ORO Imports
 import { AsyncCache } from '../shared/simpleCache';
@@ -44,6 +44,17 @@ const Echo = protoRoot.lookupType('oro.Echo');
 const CustomScriptCommandMessage = protoRoot.lookupType('oro.CustomScriptCommandMessage');
 const CustomCommandRosMessage = protoRoot.lookupType('oro.CustomCommandRosMessage');
 const TeleopGoCommand = protoRoot.lookupType('oro.TeleopGoCommand');
+
+/**
+ * Adds a plugin's .proto source (package oro.<pluginId>) to the shared root, so
+ * its messages resolve through OroMqtt#lookupType.
+ */
+const addedProtoSources = new Set();
+export const addProtoSource = (source) => {
+  if (addedProtoSources.has(source)) return; // same plugin loaded again (tests)
+  parse(source, protoRoot);
+  addedProtoSources.add(source);
+};
 
 /**
  * Handles communication with a specific Mqtt broker
@@ -352,6 +363,11 @@ ${robotId} but robot has no broker (These messages are throttled)`);
    *
    * @param options: See publish()
    */
+  /**
+   * Looks up a protobuf type by its full name, e.g. 'oro.Echo' or 'oro.example.Hello'
+   */
+  lookupType = (fullName) => protoRoot.lookupType(fullName);
+
   publishProtobuf = async (robotId, subtopic, msg, protoMsg, options = null) => {
     const binaryPayload = protoMsg.encode(msg).finish();
     await this.publish(robotId, subtopic, binaryPayload, options);

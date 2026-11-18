@@ -64,6 +64,7 @@ import {
   KIND_SPATIAL_TRANSFORMATION,
 } from '../../shared/configAPI';
 import { getSystemUser } from '../../shared/roles';
+import { getPluginRegistry } from '../../lib/plugins/registry';
 // import PeerApiKindHandler from './peerApiKindHandler';
 
 const configObjectApplyValidator = new Validator().compile(buildConfigObjectApplySchema());
@@ -77,6 +78,27 @@ const listFiltersValidator = new Validator().compile(buildListFiltersSchema());
 const fullListOutputValidator = new Validator().compile(buildConfigObjectApplySchema(true, true));
 
 const CONFIG_API_DUMMY_SCOPE_ID = '';
+
+// Kinds owned by core, including the ones currently disabled. Plugins can't
+// register these.
+export const CORE_KINDS = [
+  KIND_ACTION_DEFINITION,
+  KIND_STATUS_DEFINITION,
+  KIND_DATASOURCE_DEFINITION,
+  KIND_ROBOT_CAMERA,
+  KIND_INCIDENT_DEFINITION,
+  KIND_NOTIFICATION_CHANNEL,
+  KIND_MISSION_TRACKING,
+  KIND_ROBOT_FOOTPRINT,
+  KIND_ROBOT_PATH,
+  KIND_PREFERENCES,
+  KIND_DASHBOARD_DEFINITION,
+  KIND_MODULE_STATE,
+  KIND_ISO_ROBOT,
+  KIND_ROBOT,
+  KIND_SPATIAL_ANNOTATION,
+  KIND_SPATIAL_TRANSFORMATION,
+];
 
 let instance;
 
@@ -126,6 +148,15 @@ export default class ConfigAPI {
       [KIND_ROBOT_PATH]: new RobotPathConfigAPIHandler(this),
       // [KIND_PREFERENCES]: new PreferencesConfigAPIHandler(this),
     };
+    if (!kindsHandlersMap) {
+      // Kinds contributed by plugins (see lib/plugins/registry.js)
+      Object.entries(getPluginRegistry().getConfigKinds()).forEach(([kind, createHandler]) => {
+        if (kind in this._kindsHandlers) {
+          throw new Error(`Handler for kind ${kind} is already registered`);
+        }
+        this._kindsHandlers[kind] = createHandler(this);
+      });
+    }
     isObject(peerApiKinds) && Object.keys(peerApiKinds).forEach((kind) => {
       if (kind in this._kindsHandlers) {
         throw new Error(`Handler for kind ${kind} is already registered`);

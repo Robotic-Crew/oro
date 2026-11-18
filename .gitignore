@@ -2,3 +2,7 @@
 website/.docusaurus
 website/node_modules
 .claude/
+
+# Plugin SDK and plugins are installed through app/ and ingest/ (file: deps)
+packages/*/node_modules
+plugins/*/node_modules

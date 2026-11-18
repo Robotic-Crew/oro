@@ -30,6 +30,8 @@
     "mongodb": "^7.7.0",
     "mqtt": "^5.16.1",
     "object-hash": "^3.0.0",
+    "oro-plugin-example": "file:../plugins/oro-plugin-example",
+    "oro-plugin-sdk": "file:../packages/oro-plugin-sdk",
     "protobufjs": "^8.8.1"
   },
   "devDependencies": {

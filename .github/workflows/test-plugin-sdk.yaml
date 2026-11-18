@@ -1,0 +1,24 @@
+name: Tests
+
+on:
+  push:
+    paths:
+    - .github/workflows/test-plugin-sdk.yaml
+    - 'packages/**'
+
+jobs:
+  test-plugin-sdk:
+    name: Plugin SDK Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # No dependencies: the SDK only uses node:test
+      - name: Run tests
+        working-directory: packages/oro-plugin-sdk
+        run: npm test

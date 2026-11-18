@@ -30,6 +30,8 @@ TAG="${IMAGE_TAG:-oro-app:${SHA}${DIRTY}}"
 
 docker build \
   -f app/Dockerfile \
+  --build-context packages=packages \
+  --build-context plugins=plugins \
   -t "$TAG" \
   app
 

@@ -18,6 +18,10 @@ import { createRoot } from "react-dom/client";
 import { Meteor } from "meteor/meteor";
 import App from "/imports/client/App";
 import "/imports/client/styles.css";
+import { loadClientPlugins } from "/imports/client/plugins";
+
+// Plugins register their widgets before anything renders.
+loadClientPlugins();
 
 Meteor.startup(() => {
   const container = document.getElementById("react-target");

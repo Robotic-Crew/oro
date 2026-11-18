@@ -46,6 +46,7 @@ import {
   CHART_TYPES,
   TIMELINE_CHART_OPS_LIST,
 } from '../../lib/uiPreferences';
+import { getPluginRegistry } from '../../lib/plugins/registry';
 
 // Common fields
 const F_LABEL = 'label';
@@ -136,6 +137,12 @@ let BuildWidgetConfigConverterForType;
 // External name for WIDGET_TYPE_GROUP ("__group__", which is ugly to be externalized)
 const EXTERNAL_WIDGET_TYPE_GROUP = 'group';
 
+const CORE_WIDGET_TYPE_IDS = [EXTERNAL_WIDGET_TYPE_GROUP, ...Object.values(WIDGET_TYPES_IDS)];
+const getAllowedWidgetTypes = () => [
+  ...CORE_WIDGET_TYPE_IDS,
+  ...getPluginRegistry().getWidgetTypes().map(({ type }) => type),
+];
+
 // Schema for *widgets*. Not a top level fastest-validator schema, but instead referenced from
 // within Sections schemas. Kept as a separate object and built with Object.assign() as it is
 // recursive: widgets can contain groups... that contain widgets.
@@ -176,10 +183,18 @@ Object.assign(WidgetSchema, {
   props: {
     [F_LABEL]: 'string|required',
     [F_WIDGET_TYPE]: {
-      type: 'enum',
       // Note that any widget type, including 'group', is allowed. Validation for consistency
-      // (ie. a group must also have 'widgets') is done at top level in the custom() rule
-      values: [EXTERNAL_WIDGET_TYPE_GROUP, ...Object.values(WIDGET_TYPES_IDS)]
+      // (ie. a group must also have 'widgets') is done at top level in the custom() rule.
+      // A custom check instead of an enum: plugin widget types are only known after plugins
+      // load, and this schema is compiled at import time.
+      type: 'custom',
+      check: (value, errors) => {
+        const allowed = getAllowedWidgetTypes();
+        if (!allowed.includes(value)) {
+          errors.push({ type: 'enumValue', expected: allowed.join(', '), actual: value });
+        }
+        return value;
+      },
     },
     [F_WIDGET_WIDGETS]: {
       // The widgets property is only allowed on (non)widgets of type "group". The items
@@ -293,7 +308,8 @@ class WidgetConfigConverter {
   validate = (config, errors, name, context) => {
     // Get the schema for this widget type. To avoid compiling schemas multiple times,
     // we store them compiled in _configSchemaValidators, by demand as we instantiate subclasses.
-    const className = this.constructor.name; // a subclass: e.g. VitalsWidgetConfigValidator
+    // a subclass: e.g. VitalsWidgetConfigValidator, or a per-type key for plugin widgets
+    const className = this._validatorKey || this.constructor.name;
     let validator = WidgetConfigConverter._configSchemaValidators[className];
     if (!validator) {
       validator = SchemaValidator.compile(this.getConfigSchema());
@@ -327,9 +343,29 @@ class UnknownWidgetConfigConverter extends WidgetConfigConverter {
   };
 }
 
+/**
+ * Converter for widget types registered by plugins. Uses the plugin's
+ * `configConverter` ({ configToSpec, specToConfig, configSchema }) when given;
+ * otherwise behaves like the base class (no config exposed or accepted).
+ */
+class PluginWidgetConfigConverter extends WidgetConfigConverter {
+  constructor(type, sectionScope, def = {}) {
+    super(type, sectionScope);
+    // Each plugin type has its own schema, so the validator cache can't be keyed by class
+    this._validatorKey = `plugin:${type}`;
+    if (def.configToSpec) this.configToSpec = (config) => def.configToSpec(config);
+    if (def.specToConfig) this.specToConfig = (spec) => def.specToConfig(spec);
+    if (def.configSchema) this.getConfigSchema = () => def.configSchema;
+  }
+}
+
 BuildWidgetConfigConverterForType = (type, scope) => {
   if (WidgetConfigConvertersByType[type]) {
     return new WidgetConfigConvertersByType[type](type, scope);
+  }
+  const registry = getPluginRegistry();
+  if (registry.getWidgetTypes().some((w) => w.type === type)) {
+    return new PluginWidgetConfigConverter(type, scope, registry.getWidgetConfigConverters()[type]);
   } else {
     // Don't crash, but create errors in logs. They will not be spammy (only printed in
     // config api calls), and should not crash either
