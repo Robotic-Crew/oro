@@ -41,6 +41,13 @@ In `/scripts`, use `generate-settings.sh` to generate settings files (for ingest
 
 You can check created files `app/settings.json` and `ingest/settings.json`; as well as further customize them.
 
+Both files enable the plugins in `plugins_enabled` (by default `intrinsic` and `robotmodel`), with their settings from `plugins_config`. To change them, set those variables in `terraform/local.tfvars`, e.g.:
+
+```hcl
+plugins_enabled = ["robotmodel"]
+plugins_config  = { robotmodel = { persistIntervalMs = 500 } }
+```
+
 ## Run services (manually)
 
 First make sure `npm` packages are installed. This can be done only once (unless you packages are added). Under `/ingest` and `/app`, run `npm i`.
