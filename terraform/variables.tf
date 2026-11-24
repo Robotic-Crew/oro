@@ -167,3 +167,15 @@ variable "iso21423_upstream_enabled" {
   type        = bool
   default     = false
 }
+
+variable "plugins_enabled" {
+  description = "Plugins to load, by id (e.g. \"robotmodel\" for oro-plugin-robotmodel). Written to the app (public.plugins.enabled) and ingest (plugins.enabled) settings."
+  type        = list(string)
+  default     = ["intrinsic", "robotmodel"]
+}
+
+variable "plugins_config" {
+  description = "Per-plugin settings, by plugin id (e.g. { robotmodel = { persistIntervalMs = 200 } }). Shared by app (public, visible to browsers: no secrets) and ingest."
+  type        = any
+  default     = { robotmodel = {} }
+}

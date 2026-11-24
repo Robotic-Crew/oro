@@ -61,6 +61,10 @@ resource "local_file" "web_app_settings" {
     {
       public = {
         oauthProviders = local.oauth_providers
+        plugins = {
+          enabled = var.plugins_enabled
+          config  = var.plugins_config
+        }
       }
       robotApiKeys   = [random_password.robot_api_key.result]
       allowedOrigins = []
@@ -154,6 +158,10 @@ locals {
     iso21423 = {
       robots   = { enabled = var.iso21423_robots_enabled }
       upstream = { enabled = var.iso21423_upstream_enabled }
+    }
+    plugins = {
+      enabled = var.plugins_enabled
+      config  = var.plugins_config
     }
   }
 
