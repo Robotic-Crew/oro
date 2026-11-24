@@ -627,6 +627,10 @@ WidgetConfigConvertersByType = {
   [WIDGET_TYPES_IDS.CHART]: ChartWidgetConfigConverter,
   [WIDGET_TYPES_IDS.ACTIONS]: ActionsWidgetConfigConverter,
   [WIDGET_TYPES_IDS.CAMERA]: CameraWidgetConfigConverter,
+  [WIDGET_TYPES_IDS.ROBOT_MODEL]: WidgetConfigConverter,
+  [WIDGET_TYPES_IDS.EXECUTION]: WidgetConfigConverter,
+  [WIDGET_TYPES_IDS.CYCLE_TIMELINE]: WidgetConfigConverter,
+  [WIDGET_TYPES_IDS.PERCEPTION]: WidgetConfigConverter,
   [WIDGET_TYPES_IDS.FLEET_STATUS]: FleetStatusWidgetConfigConverter,
   [WIDGET_TYPES_IDS.TEXT]: TextWidgetConfigConverter,
 };

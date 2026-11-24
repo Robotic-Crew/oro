@@ -36,6 +36,8 @@ import ApiKeysManager from '../imports/server/apiKeysManager';
 // Registers database migrations (Migrations.add) before migrateTo() runs below.
 import '../imports/server/migrations';
 import '../imports/server/publications';
+import '../imports/server/jointStates';
+import '../imports/server/intrinsic';
 import ConfigAPI from '../imports/server/configAPI/configAPI';
 import OroRoles from '../imports/server/roles';
 import AttributesManager from '../imports/server/attributes';

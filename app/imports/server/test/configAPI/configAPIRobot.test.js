@@ -29,7 +29,9 @@ import {
 } from '../../../shared/configAPI';
 import { ROLE_VIEWER, ROLE_MANAGER } from '../../../lib/roles';
 import { createUser } from '../configAPI';
-import { Robots, RobotLocalization, RobotKeyValues } from '../../../lib/collections';
+import {
+  Robots, RobotLocalization, RobotKeyValues, JointStates,
+} from '../../../lib/collections';
 import { AttrValues } from '../../../lib/attributes';
 import { RobotStatus } from '../../../lib/status';
 import { STATUS } from '../../../shared/status';
@@ -193,5 +195,37 @@ describe('configAPI:Robot kind', () => {
     expect(byId.g1.spec).to.deep.equal({ label: 'Picker 4', ghost: true });
     const short = await configApi.list({ user: manager, kind: KIND_ROBOT });
     expect(short[0].spec).to.equal(undefined);
+  });
+
+  it('apply: model is set on any robot, kept when omitted, removed with null', async () => {
+    await configApi.apply({ configObject: robotObject('r1', { label: 'R1', model: 'ur5e' }), user: manager });
+    expect((await Robots.findOneAsync({ _id: 'r1' })).model).to.equal('ur5e');
+    await configApi.apply({ configObject: robotObject('r1', { label: 'R1' }), user: manager });
+    expect((await Robots.findOneAsync({ _id: 'r1' })).model).to.equal('ur5e');
+    const [listed] = await configApi.list({ user: manager, kind: KIND_ROBOT, format: LIST_FORMAT_FULL });
+    expect(listed.spec).to.deep.equal({ label: 'R1', model: 'ur5e' });
+    await configApi.apply({ configObject: robotObject('r1', { model: null }), user: manager });
+    expect((await Robots.findOneAsync({ _id: 'r1' })).model).to.equal(undefined);
+  });
+
+  it('apply: rejects a malformed model id', async () => {
+    await expect(configApi.apply({ configObject: robotObject('r1', { model: 'ur 5e' }), user: manager }))
+      .to.be.rejectedWith(SchemaError);
+  });
+
+  it('apply: ghost joints are written as a joint states snapshot, and cleared with the ghost', async () => {
+    const spec = { ghost: true, model: 'demo-arm', joints: { shoulder: 0.5, elbow: -1 } };
+    await configApi.apply({ configObject: robotObject('g1', spec), user: manager });
+    const jointStates = await JointStates.findOneAsync({ _id: 'g1' });
+    expect(jointStates).to.deep.equal({
+      _id: 'g1', names: ['shoulder', 'elbow'], positions: [0.5, -1], ts: GHOST_TS,
+    });
+    await configApi.clear({ configObject: robotObject('g1'), user: manager });
+    expect(await JointStates.findOneAsync({ _id: 'g1' })).to.equal(undefined);
+  });
+
+  it('apply: rejects joints on a non-ghost robot', async () => {
+    await expect(configApi.apply({ configObject: robotObject('r1', { joints: { a: 1 } }), user: manager }))
+      .to.be.rejectedWith(SchemaError);
   });
 });

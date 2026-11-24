@@ -81,6 +81,10 @@ const WIDGET_TYPES = {
   CAMERA: 'cameraWidget',
   AUDIT_LOG: 'auditLog',
   LIST_DATA: 'listData',
+  ROBOT_MODEL: 'robotModel',
+  EXECUTION: 'execution',
+  CYCLE_TIMELINE: 'cycleTimeline',
+  PERCEPTION: 'perception',
   TEXT: 'text'
 };
 
@@ -111,6 +115,11 @@ const WIDGET_TYPES_IDS = {
   CUSTOM_DATA_IMAGE: 'customDataImage',
   CUSTOM_DATA_TEXT: 'customDataText',
   HISTORY: 'history',
+  ROBOT_MODEL: 'robotModel',
+  // Skill-based cells (e.g. Intrinsic Core)
+  EXECUTION: 'execution',
+  CYCLE_TIMELINE: 'cycleTimeline',
+  PERCEPTION: 'perception',
   // Navigation widgets
   NAVIGATION_CONTROL_BAR: 'navigationControlBar',
   // Mission widgets
@@ -427,6 +436,58 @@ const WIDGET_TYPES_LIST = [
     defaultConfig: {},
     scope: SECTION_SCOPES.FLEET,
     imgLocation: '/images/thumbnails/thumb_missions.svg'
+  },
+  {
+    _id: WIDGET_TYPES_IDS.ROBOT_MODEL,
+    label: '3D Model',
+    configurable: false,
+    defaultLayout: {
+      grid: WIDGET_CONFIG.SMALL_GRID,
+      chroma: true,
+      height: 1
+    },
+    defaultConfig: {},
+    scope: SECTION_SCOPES.ROBOT,
+    imgLocation: '/images/thumbnails/thumb_3d model.svg'
+  },
+  {
+    _id: WIDGET_TYPES_IDS.EXECUTION,
+    label: 'Execution',
+    configurable: false,
+    defaultLayout: {
+      grid: WIDGET_CONFIG.SMALL_GRID,
+      chroma: true,
+      height: 1
+    },
+    defaultConfig: {},
+    scope: SECTION_SCOPES.ROBOT,
+    imgLocation: '/images/thumbnails/thumb_execution.svg'
+  },
+  {
+    _id: WIDGET_TYPES_IDS.CYCLE_TIMELINE,
+    label: 'Cycle Timeline',
+    configurable: false,
+    defaultLayout: {
+      grid: WIDGET_CONFIG.SMALL_GRID,
+      chroma: true,
+      height: 1
+    },
+    defaultConfig: {},
+    scope: SECTION_SCOPES.ROBOT,
+    imgLocation: '/images/thumbnails/thumb_cycle timeline.svg'
+  },
+  {
+    _id: WIDGET_TYPES_IDS.PERCEPTION,
+    label: 'Perception',
+    configurable: false,
+    defaultLayout: {
+      grid: WIDGET_CONFIG.SMALL_GRID,
+      chroma: true,
+      height: 1
+    },
+    defaultConfig: {},
+    scope: SECTION_SCOPES.ROBOT,
+    imgLocation: '/images/thumbnails/thumb_perception.svg'
   },
   // NOTE(herchu) When adding a new widget type, also add its config conversion to and from
   // Config API specs, in server/configAPI/dashboards.js#WidgetConfigConvertersByType

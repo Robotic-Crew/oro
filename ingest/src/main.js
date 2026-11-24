@@ -52,6 +52,8 @@ import {
 //   RosMonitorModule,
   CustomCommandsModule,
   RobotEventsModule,
+  JointStatesModule,
+  IntrinsicModule,
 //   ImagesModule,
 //   GpsModule,
   UpstreamModule,
@@ -170,6 +172,8 @@ async function run() {
     new RobotEventsModule({ mqtt, mongo }).load();
     new DiagnosticsModule(mqtt).load(moduleSettings.diagnostics);
     new CustomCommandsModule(mqtt).load();
+    new JointStatesModule(mqtt).load(moduleSettings.jointStates);
+    new IntrinsicModule(mqtt).load();
 
     await new RobotLocalizationModule({
       mqtt,

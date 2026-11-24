@@ -40,6 +40,8 @@ const COLLECTIONS = {
   STATUS_CONFIG: 'status_config',
   UI_PREFERENCES: 'ui_preferences',
   PREFERENCES: 'preferences',
+  // 3D robot models (URDF), referenced by robots; see shared/jointStates.js
+  ROBOT_MODELS: 'robot_models',
 
   // - Data
   ATTRIBUTE_VALUES: 'attr_values',
@@ -64,6 +66,14 @@ const COLLECTIONS = {
   CUSTOM_DATA: 'custom_data',
   CUSTOM_DATA_KEY_VALUES: 'custom_data_key_values', // Deprecated, goes away after IO-876 contract
   ROBOT_KEY_VALUES: 'robot_key_values',
+  // Latest joint positions per robot (articulated robots, e.g. arms)
+  JOINT_STATES: 'joint_states',
+  // Skill-based cells (e.g. Intrinsic Core), see docs/intrinsic-core-widgets.md:
+  // latest behavior tree execution per robot, finished steps, latest scene, perception results
+  EXECUTIONS: 'executions',
+  EXECUTION_STEPS: 'execution_steps',
+  SCENES: 'scenes',
+  PERCEPTION_RESULTS: 'perception_results',
   MISSIONS: 'missions',
   MISSIONS_CONFIG: 'missions_config',
 
@@ -192,8 +202,28 @@ const SPATIAL_ANNOTATION_TYPES = {
   MAP: 'map',
 }
 
+// Joint states (articulated robots, e.g. arms): MQTT subtopic the agent publishes
+// JointStatesMessage on, and the prefix of their time series fields (one field per joint, see
+// timeseriesStore.jointFieldName)
+const JOINT_STATES_SUBTOPIC = 'ros/joint_states';
+const JOINT_FIELD_PREFIX = 'joint_';
+
+// Skill-based cells: MQTT subtopics of ExecutionStateMessage, SceneMessage and
+// PerceptionResultMessage (see docs/intrinsic-core-widgets.md)
+const INTRINSIC_SUBTOPICS = {
+  EXECUTION: 'intrinsic/execution',
+  SCENE: 'intrinsic/scene',
+  PERCEPTION: 'intrinsic/perception',
+};
+// Perception results (with their image) kept per robot
+const PERCEPTION_RESULTS_KEPT = 50;
+
 export {
   COLLECTIONS,
+  JOINT_STATES_SUBTOPIC,
+  JOINT_FIELD_PREFIX,
+  INTRINSIC_SUBTOPICS,
+  PERCEPTION_RESULTS_KEPT,
   // Configs
   ID_DEFAULT,
   ID_TYPE_SYSTEM_WIDE,

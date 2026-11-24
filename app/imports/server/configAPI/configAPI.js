@@ -31,6 +31,7 @@ import StatusConfigAPIHandler from './statusDefinitions';
 import ModuleStateConfigAPIHandler from './moduleState';
 import IsoRobotConfigAPIHandler from './isoRobots';
 import RobotConfigAPIHandler from './robots';
+import RobotModelConfigAPIHandler from './robotModel';
 import SpatialAnnotationConfigAPIHandler from './spatialAnnotation';
 // import MissionTrackingAPIHandler from './missionTracking';
 import RobotFootprintConfigAPIHandler from './robotFootprint';
@@ -60,6 +61,7 @@ import {
   KIND_MODULE_STATE,
   KIND_ISO_ROBOT,
   KIND_ROBOT,
+  KIND_ROBOT_MODEL,
   KIND_SPATIAL_ANNOTATION,
   KIND_SPATIAL_TRANSFORMATION,
 } from '../../shared/configAPI';
@@ -119,6 +121,7 @@ export default class ConfigAPI {
       [KIND_MODULE_STATE]: new ModuleStateConfigAPIHandler(this),
       [KIND_ISO_ROBOT]: new IsoRobotConfigAPIHandler(this),
       [KIND_ROBOT]: new RobotConfigAPIHandler(this),
+      [KIND_ROBOT_MODEL]: new RobotModelConfigAPIHandler(this),
       [KIND_SPATIAL_ANNOTATION]: new SpatialAnnotationConfigAPIHandler(this),
       [KIND_SPATIAL_TRANSFORMATION]: new SpatialTransformationConfigAPIHandler(this),
       // [KIND_MISSION_TRACKING]: new MissionTrackingAPIHandler(this),

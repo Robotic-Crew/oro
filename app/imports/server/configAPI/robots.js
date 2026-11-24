@@ -25,19 +25,22 @@
  * "never stale") and the spec may also carry `pose`, `attributes` and `statuses`, written once
  * into the same collections ingest would write for a live robot. Those fields are rejected on
  * non-ghost robots: this kind is not a way to feed live data.
+ *
+ * `model` (any robot) references a `RobotModel`, drawn by the 3D model widget; `null` removes it.
+ * Ghosts may also carry static `joints` positions for that model.
  */
 import Validator from 'fastest-validator';
 
 import Robot from '../model/robot';
 import OroRoles from '../roles';
-import { Robots, RobotLocalization, RobotKeyValues } from '../../lib/collections';
+import { Robots, RobotLocalization, RobotKeyValues, JointStates } from '../../lib/collections';
 import { AttrValues } from '../../lib/attributes';
 import { RobotStatus } from '../../lib/status';
 import { STATUS } from '../../shared/status';
 import { HACK_GHOST_UPDATE_STAMP_VALUE } from '../../shared/constants';
 import { VITAL_ONLINE } from '../../shared/attributes';
 import {
-  SchemaError, ValidationError, AuthorizationError, LIST_FORMAT_SHORT, KIND_ROBOT,
+  SchemaError, ValidationError, AuthorizationError, LIST_FORMAT_SHORT, KIND_ROBOT, ID_PATTERN,
 } from '../../shared/configAPI';
 import { RESOURCE_SINGLETONS, ACCESS_LEVEL_CONFIGURE, isSystemUser } from '../../shared/roles';
 
@@ -45,7 +48,7 @@ const GHOST_TS = HACK_GHOST_UPDATE_STAMP_VALUE;
 const GHOST_VERSION = 'ghost';
 // Shown as the agent version until the real agent reports one
 const UNKNOWN_VERSION = 'unknown';
-const STATIC_DATA_FIELDS = ['pose', 'attributes', 'statuses'];
+const STATIC_DATA_FIELDS = ['pose', 'attributes', 'statuses', 'joints'];
 const STATUS_NAMES = ['OK', 'WARN', 'ERROR'];
 
 // Same guard as isoRobots.js / moduleState.js: configure access on the fleet singleton.
@@ -75,6 +78,8 @@ const RobotSpecSchema = {
   },
   attributes: { type: 'record', optional: true, value: scalar },
   statuses: { type: 'record', optional: true, value: { type: 'enum', values: STATUS_NAMES } },
+  model: { type: 'string', optional: true, nullable: true, pattern: ID_PATTERN },
+  joints: { type: 'record', optional: true, value: 'number' },
 };
 const specValidator = new Validator().compile(RobotSpecSchema);
 
@@ -103,7 +108,7 @@ export class RobotConfigAPIHandler {
   list = async ({ id = null, user, format = LIST_FORMAT_SHORT } = {}) => {
     await assertAuthorized(user);
     const query = id ? { _id: id } : {};
-    const docs = await Robots.find(query, { projection: { name: 1, updateStamp: 1 } })
+    const docs = await Robots.find(query, { projection: { name: 1, updateStamp: 1, model: 1 } })
       .fetchAsync();
     return docs.map((doc) => ({
       apiVersion: 'v0.1',
@@ -113,6 +118,7 @@ export class RobotConfigAPIHandler {
         spec: {
           label: doc.name,
           ...(doc.updateStamp === GHOST_TS ? { ghost: true } : {}),
+          ...(doc.model ? { model: doc.model } : {}),
         },
       }),
     }));
@@ -134,11 +140,15 @@ export class RobotConfigAPIHandler {
     }
     const $set = {};
     if (spec.label) $set.name = spec.label;
+    if (spec.model) $set.model = spec.model;
     if (spec.ghost) {
       Object.assign($set, { updateStamp: GHOST_TS, 'status.agentOnline': true, version: GHOST_VERSION });
     }
     if (Object.keys($set).length) {
       await Robots.updateAsync({ _id: robotId }, { $set });
+    }
+    if (spec.model === null) {
+      await Robots.updateAsync({ _id: robotId }, { $unset: { model: '' } });
     }
 
     if (spec.ghost) {
@@ -148,7 +158,7 @@ export class RobotConfigAPIHandler {
   };
 
   // Static data a ghost carries, in the collections ingest writes for a live robot.
-  _writeGhostData = async (robotId, { pose, attributes = {}, statuses = {} }) => {
+  _writeGhostData = async (robotId, { pose, attributes = {}, statuses = {}, joints }) => {
     const upsert = (coll, $set) => coll.updateAsync({ _id: robotId }, { $set }, { upsert: true });
     await upsert(AttrValues, stamped({ ...attributes, [VITAL_ONLINE]: true }));
     await upsert(RobotKeyValues, stamped(attributes));
@@ -157,6 +167,11 @@ export class RobotConfigAPIHandler {
       await upsert(RobotLocalization, {
         robotPose: { x: pose.x, y: pose.y, theta: pose.theta || 0, ts: GHOST_TS },
         robotPoseUpdatedTs: GHOST_TS,
+      });
+    }
+    if (joints) {
+      await upsert(JointStates, {
+        names: Object.keys(joints), positions: Object.values(joints), ts: GHOST_TS,
       });
     }
   };
@@ -174,7 +189,7 @@ export class RobotConfigAPIHandler {
     }
     await Robots.removeAsync({ _id: robotId });
     if (ghost) {
-      for (const coll of [AttrValues, RobotKeyValues, RobotStatus, RobotLocalization]) {
+      for (const coll of [AttrValues, RobotKeyValues, RobotStatus, RobotLocalization, JointStates]) {
         await coll.removeAsync({ _id: robotId });
       }
     }

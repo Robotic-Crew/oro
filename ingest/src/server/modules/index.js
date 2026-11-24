@@ -28,4 +28,6 @@ export { default as CustomCommandsModule } from './customCommands';
 export { default as BasicsModule } from './basics';
 export { default as UpstreamModule } from './upstream';
 export { default as RobotEventsModule } from './events';
+export { default as JointStatesModule } from './jointStates';
+export { default as IntrinsicModule } from './intrinsic';
 // export { default as GpsModule } from './gps';

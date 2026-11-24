@@ -520,5 +520,6 @@ export const withDirectClient = (WrappedComponent, _config) => {
 
 export {
   MqttWrapper,
+  getProtobufType,
   useDirectClientMulti,
 }

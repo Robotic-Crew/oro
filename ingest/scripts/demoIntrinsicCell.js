@@ -1,0 +1,448 @@
+'use strict';
+
+/**
+ * Demo of a skill-based cell (e.g. Intrinsic Core) for the Execution, Cycle Timeline, Perception
+ * and 3D Model widgets: a ghost arm doing pick-and-place cycles from two lanes onto a drop
+ * station, with a grasp or a detection failing now and then.
+ *
+ *   node scripts/demoIntrinsicCell.js [--robot cell-1] [--app http://localhost:3000]
+ *
+ * Needs the app and ingest running. It applies (idempotently, through the config API with the
+ * app's peer key) the `demo-arm` RobotModel, a ghost Robot and the "Intrinsic Cell" dashboard,
+ * then publishes over MQTT what an agent on a real cell would (with ingest's broker credentials,
+ * so it works for a ghost robot):
+ * - r/<robot>/state: online, retained (offline as last will)
+ * - r/<robot>/ros/joint_states: JointStatesMessage
+ * - r/<robot>/intrinsic/{execution,scene,perception}: ExecutionStateMessage, SceneMessage,
+ *   PerceptionResultMessage (ingest derives the cycle steps from the execution states)
+ * - r/<robot>/custom: a summary of the cell as key-values (cell_state, current_step, ...), which
+ *   any ORO or InOrbit dashboard can show without the cell widgets, e.g. when forwarded upstream
+ *
+ * Run ./import.sh first (it copies oro.proto into src/shared). See docs/intrinsic-core-widgets.md.
+ */
+const fs = require('fs');
+const path = require('path');
+const mqtt = require('mqtt');
+const protobuf = require('protobufjs');
+
+const args = process.argv.slice(2);
+const option = (name, fallback) => {
+  const ix = args.indexOf(`--${name}`);
+  return ix >= 0 ? args[ix + 1] : fallback;
+};
+const ROBOT_ID = option('robot', 'cell-1');
+const APP_URL = option('app', 'http://localhost:3000');
+const SETTINGS_PATH = path.resolve(option('settings', path.join(__dirname, '..', 'settings.json')));
+const TICK_MS = 100;
+// Key-values go in custom data with this custom_field, as the InOrbit agents do
+const KEY_VALUES_FIELD = '0';
+
+// --- Demo arm kinematics (app/public/robot-models/demo-arm/demo_arm.urdf) -----------------------
+
+const JOINTS = ['shoulder_pan', 'shoulder_lift', 'elbow', 'wrist_pitch', 'wrist_roll', 'finger_left'];
+const rz = a => [[Math.cos(a), -Math.sin(a), 0], [Math.sin(a), Math.cos(a), 0], [0, 0, 1]];
+const ry = a => [[Math.cos(a), 0, Math.sin(a)], [0, 1, 0], [-Math.sin(a), 0, Math.cos(a)]];
+const mul = (A, B) => A.map(row => [0, 1, 2].map(j => row.reduce((s, v, k) => s + v * B[k][j], 0)));
+const apply = (A, v) => A.map(row => row.reduce((s, x, k) => s + x * v[k], 0));
+
+/** Tool tip (between the fingers) position for joints [pan, lift, elbow, pitch, roll] */
+const toolTip = (q) => {
+  let p = [0, 0, 0.08];
+  let R = rz(q[0]);
+  [[0.14, ry(q[1])], [0.4, ry(q[2])], [0.34, ry(q[3])], [0.1, rz(q[4])]].forEach(([offset, rot]) => {
+    p = p.map((x, i) => x + apply(R, [0, 0, offset])[i]);
+    R = mul(R, rot);
+  });
+  return p.map((x, i) => x + apply(R, [0, 0, 0.11])[i]);
+};
+
+// Arm poses (tool pointing down over the lanes and the drop station); fingers set separately
+const lanePose = (pan, lift, elbow, pitch) => [pan, lift, elbow, pitch, 0];
+const POSES = {
+  standby: lanePose(0, -0.3, 1.7, 1.2),
+  left: { view: lanePose(0.8, 0.15, 1.35, 1.6), above: lanePose(0.8, 0.45, 1.35, 1.34), grasp: lanePose(0.8, 0.7, 1.25, 1.19) },
+  right: { view: lanePose(-0.8, 0.15, 1.35, 1.6), above: lanePose(-0.8, 0.45, 1.35, 1.34), grasp: lanePose(-0.8, 0.7, 1.25, 1.19) },
+  aboveDrop: lanePose(2.6, 0.2, 1.2, 1.74),
+  drop: lanePose(2.6, 0.4, 1.15, 1.59),
+};
+const FINGERS = { open: 0.045, closed: 0.008, holding: 0.03 };
+
+// --- Scene ----------------------------------------------------------------------------------------
+
+const DOWN = [1, 0, 0, 0]; // tool frames: rotated 180° about X
+const pose = (position, quaternion = [0, 0, 0, 1]) => ({ position, quaternion });
+/** { position, quaternion } -> Pose3D */
+const pose3D = ({ position: [x, y, z], quaternion: [qx, qy, qz, qw] }) => ({ x, y, z, qx, qy, qz, qw });
+const frameAt = (id, q) => ({ id, name: id, pose: pose(toolTip(q), DOWN) });
+const graspTip = lane => toolTip(POSES[lane].grasp);
+
+const PIECE_SIZE = [0.06, 0.06, 0.08];
+const pieceRestingPose = (lane) => {
+  const [x, y, z] = graspTip(lane);
+  return pose([x, y, z - 0.02]);
+};
+const STATIC_OBJECTS = ['left', 'right'].map((lane) => {
+  const [x, y] = graspTip(lane);
+  const top = graspTip(lane)[2] - 0.06;
+  return {
+    id: `cart_${lane}`, name: `Cart ${lane}`, shape: 'box', size: [0.26, 0.22, top], pose: pose([x, y, top / 2]), color: '#6b7280',
+  };
+}).concat([{
+  id: 'drop_station', name: 'Drop station', shape: 'box', size: [0.34, 0.34, 0.3],
+  pose: pose([toolTip(POSES.drop)[0], toolTip(POSES.drop)[1], 0.15]), color: '#94a3b8',
+}]);
+const FRAMES = [
+  frameAt('standby', POSES.standby),
+  frameAt('lane_left_view', POSES.left.view), frameAt('lane_left_grasp', POSES.left.grasp),
+  frameAt('lane_right_view', POSES.right.view), frameAt('lane_right_grasp', POSES.right.grasp),
+  frameAt('drop', POSES.drop),
+];
+
+// --- Behavior tree -----------------------------------------------------------------------------------
+
+const TREE = [
+  { id: 'full', name: 'Pick and place', type: 'sequence' },
+  { id: 'grab', name: 'grab', type: 'sequence', parentId: 'full' },
+  { id: 'standby', name: 'Move to standby', type: 'move', parentId: 'grab' },
+  { id: 'view', name: 'Move to lane view', type: 'move', parentId: 'grab' },
+  { id: 'close_view', name: 'Close fingers', type: 'gripper', parentId: 'grab' },
+  { id: 'estimate', name: 'Capture + estimate pose', type: 'perception', parentId: 'grab' },
+  { id: 'open', name: 'Open gripper', type: 'gripper', parentId: 'grab' },
+  { id: 'approach', name: 'Approach piece', type: 'move', parentId: 'grab' },
+  { id: 'descend', name: 'Descend to piece', type: 'move', parentId: 'grab' },
+  { id: 'close', name: 'Close gripper', type: 'gripper', parentId: 'grab' },
+  { id: 'check', name: 'Grasp check', type: 'gripper', parentId: 'grab' },
+  { id: 'lift', name: 'Lift', type: 'move', parentId: 'grab' },
+  { id: 'over_drop', name: 'Move over drop station', type: 'move', parentId: 'grab' },
+  { id: 'wait', name: 'Wait for AMR', type: 'wait', parentId: 'grab' },
+  { id: 'release', name: 'release', type: 'sequence', parentId: 'full' },
+  { id: 'lower', name: 'Lower onto station', type: 'move', parentId: 'release' },
+  { id: 'let_go', name: 'Open gripper', type: 'gripper', parentId: 'release' },
+  { id: 'retreat', name: 'Retreat', type: 'move', parentId: 'release' },
+  { id: 'home', name: 'Return to standby', type: 'move', parentId: 'release' },
+];
+const parentOf = Object.fromEntries(TREE.map(n => [n.id, n.parentId]));
+
+/** The steps of one cycle on `lane`: { node, seconds, arm?, fingers?, onEnd? } */
+const cycleSteps = lane => [
+  { node: 'standby', seconds: 1.2, arm: POSES.standby, fingers: FINGERS.open },
+  { node: 'view', seconds: 1.8, arm: POSES[lane].view },
+  { node: 'close_view', seconds: 0.5, fingers: FINGERS.closed },
+  { node: 'estimate', seconds: 1.1 + Math.random() * 0.6, perception: true },
+  { node: 'open', seconds: 0.5, fingers: FINGERS.open },
+  { node: 'approach', seconds: 1.3, arm: POSES[lane].above },
+  { node: 'descend', seconds: 0.9, arm: POSES[lane].grasp },
+  { node: 'close', seconds: 0.7, fingers: FINGERS.holding },
+  { node: 'check', seconds: 0.4, graspCheck: true },
+  { node: 'lift', seconds: 0.8, arm: POSES[lane].above },
+  { node: 'over_drop', seconds: 2.2, arm: POSES.aboveDrop },
+  { node: 'wait', seconds: 0.8 + Math.random() * 3 },
+  { node: 'lower', seconds: 1.0, arm: POSES.drop },
+  { node: 'let_go', seconds: 0.5, fingers: FINGERS.open, release: true },
+  { node: 'retreat', seconds: 0.7, arm: POSES.aboveDrop },
+  { node: 'home', seconds: 2.0, arm: POSES.standby },
+];
+
+// --- Perception: a synthetic top-down capture of the lane ---------------------------------------
+
+const W = 640;
+const H = 400;
+const captureSvg = ({ found, dx, dy, angle }) => {
+  const cx = W / 2 + dx;
+  const cy = H / 2 + dy;
+  const piece = found
+    ? `<g transform="rotate(${angle} ${cx} ${cy})"><rect x="${cx - 55}" y="${cy - 55}" width="110" height="110" rx="6" fill="#3f5fbf"/>`
+      + `<rect x="${cx - 40}" y="${cy - 40}" width="80" height="80" rx="4" fill="#5577d6"/></g>`
+    : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
+    + '<defs><radialGradient id="l" cx="50%" cy="45%" r="70%"><stop offset="0" stop-color="#d9dbde"/><stop offset="1" stop-color="#8e9298"/></radialGradient></defs>'
+    + `<rect width="${W}" height="${H}" fill="#55595f"/>`
+    + `<rect x="90" y="40" width="${W - 180}" height="${H - 80}" rx="10" fill="url(#l)" stroke="#3b3e43" stroke-width="6"/>`
+    + `<g stroke="#b9bcc1" stroke-width="2">${[0, 1, 2, 3].map(i => `<line x1="${130 + i * 110}" y1="60" x2="${130 + i * 110}" y2="${H - 60}"/>`).join('')}</g>`
+    + piece
+    + '</svg>';
+};
+
+const perceptionResult = (lane, cycleId) => {
+  const found = Math.random() > 0.08;
+  const dx = (Math.random() - 0.5) * 120;
+  const dy = (Math.random() - 0.5) * 80;
+  const angle = (Math.random() - 0.5) * 50;
+  const cx = W / 2 + dx;
+  const cy = H / 2 + dy;
+  const rad = (angle * Math.PI) / 180;
+  const half = 55 * (Math.abs(Math.cos(rad)) + Math.abs(Math.sin(rad)));
+  const confidence = 0.82 + Math.random() * 0.16;
+  return {
+    found,
+    error: found ? '' : 'PieceNotFound: no detection above the score threshold',
+    message: {
+      ts: Date.now(),
+      cameraId: 'wrist',
+      cycleId,
+      image: Buffer.from(captureSvg({ found, dx, dy, angle })),
+      imageMime: 'image/svg+xml',
+      width: W,
+      height: H,
+      detections: found ? [{
+        label: `piece_${lane}`, score: 0.9 + Math.random() * 0.09,
+        x: cx - half - 8, y: cy - half - 8, width: 2 * half + 16, height: 2 * half + 16,
+      }] : [],
+      poses: found ? [{
+        objectId: `piece_${lane}`,
+        pose: pose3D(pieceRestingPose(lane)),
+        confidence,
+        axisOrigin: { u: cx, v: cy },
+        axisX: { u: cx + 70 * Math.cos(rad), v: cy + 70 * Math.sin(rad) },
+        axisY: { u: cx + 70 * Math.sin(rad), v: cy - 70 * Math.cos(rad) },
+        axisZ: { u: cx - 30, v: cy + 30 },
+      }] : [],
+      success: found,
+      error: found ? '' : 'PieceNotFound: no detection above the score threshold',
+    },
+    confidence: found ? confidence : null,
+  };
+};
+
+// --- Config (through the app's config API) ------------------------------------------------------
+
+const DASHBOARD = {
+  apiVersion: 'v0.1',
+  kind: 'DashboardDefinition',
+  metadata: { id: 'intrinsic-cell' },
+  spec: {
+    label: 'Intrinsic Cell',
+    order: 10,
+    sections: [{
+      label: 'Cell',
+      scope: 'robot',
+      withControlWidget: true,
+      widgets: [
+        { label: '3D Model', type: 'robotModel', layout: { chroma: true, grid: 7, height: 1 } },
+        { label: 'Execution', type: 'execution', layout: { chroma: true, grid: 5, height: 1 } },
+        { label: 'Perception', type: 'perception', layout: { chroma: true, grid: 5, height: 1 } },
+        { label: 'Cycle Timeline', type: 'cycleTimeline', layout: { chroma: true, grid: 7, height: 1 } },
+      ],
+    }],
+  },
+};
+
+const applyConfig = async () => {
+  const { peerKey } = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'settings.json')));
+  const objects = [
+    { apiVersion: 'v0.1', kind: 'RobotModel', metadata: { id: 'demo-arm' }, spec: { label: 'Demo arm', urdf: '/robot-models/demo-arm/demo_arm.urdf' } },
+    { apiVersion: 'v0.1', kind: 'Robot', metadata: { id: ROBOT_ID, scope: '' }, spec: { label: 'Demo cell', ghost: true, model: 'demo-arm' } },
+    DASHBOARD,
+  ];
+  for (const object of objects) {
+    const res = await fetch(`${APP_URL}/api/configuration/apply`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-auth-peer-key': peerKey },
+      body: JSON.stringify(object),
+    });
+    if (!res.ok) {
+      throw new Error(`Applying ${object.kind} ${object.metadata.id}: ${res.status} ${await res.text()}`);
+    }
+  }
+  console.log(`Applied RobotModel demo-arm, ghost Robot ${ROBOT_ID} and dashboard "${DASHBOARD.spec.label}"`);
+};
+
+// --- Simulation --------------------------------------------------------------------------------------
+
+const smoothstep = t => t * t * (3 - 2 * t);
+const lerp = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const connect = () => {
+  const { brokers, defaultBrokerId } = JSON.parse(fs.readFileSync(SETTINGS_PATH)).mqtt;
+  const broker = brokers[defaultBrokerId];
+  const stateTopic = `r/${ROBOT_ID}/state`;
+  const client = mqtt.connect(`${broker.protocol}${broker.hostname}:${broker.port}`, {
+    username: broker.username,
+    password: broker.password,
+    will: { topic: stateTopic, payload: `0||${AGENT_VERSION}|${ROBOT_ID}`, retain: true, qos: 1 },
+  });
+  return new Promise((resolve, reject) => {
+    client.once('connect', () => {
+      client.publish(stateTopic, `1||${AGENT_VERSION}|${ROBOT_ID}`, { retain: true, qos: 1 });
+      resolve(client);
+    });
+    client.once('error', reject);
+  });
+};
+const AGENT_VERSION = 'demo-intrinsic-cell';
+
+const run = async () => {
+  await applyConfig();
+  const types = protobuf.loadSync(path.join(__dirname, '..', 'src', 'shared', 'oro.proto'));
+  const client = await connect();
+  console.log(`Publishing the cell on r/${ROBOT_ID}/... (Ctrl+C to stop)`);
+  const publish = (subtopic, typeName, fields) => {
+    const Type = types.lookupType(typeName);
+    client.publish(`r/${ROBOT_ID}/${subtopic}`, Buffer.from(Type.encode(Type.fromObject(fields)).finish()));
+  };
+
+  let arm = [...POSES.standby];
+  let fingers = FINGERS.open;
+  const scene = { objects: [], frames: FRAMES, attached: [], plannedPath: [] };
+  const pieces = { left: pieceRestingPose('left'), right: pieceRestingPose('right') };
+
+  const writeJoints = () => publish('ros/joint_states', 'oro.JointStatesMessage', {
+    ts: Date.now(), names: JOINTS, positions: [...arm, fingers],
+  });
+  const writeScene = () => {
+    scene.objects = STATIC_OBJECTS.concat(['left', 'right'].map(lane => ({
+      id: `piece_${lane}`, name: `Piece ${lane}`, shape: 'box', size: PIECE_SIZE, pose: pieces[lane], color: '#3f5fbf',
+    })));
+    publish('intrinsic/scene', 'oro.SceneMessage', {
+      ts: Date.now(),
+      objects: scene.objects.map(o => ({ ...o, pose: pose3D(o.pose) })),
+      frames: scene.frames.map(f => ({ ...f, pose: pose3D(f.pose) })),
+      attached: scene.attached.map(a => ({ ...a, pose: pose3D(a.pose) })),
+      plannedPath: scene.plannedPath.map(([x, y, z]) => ({ x, y, z })),
+    });
+  };
+  const writeExecution = ({ nodes, ...execution }) => publish('intrinsic/execution', 'oro.ExecutionStateMessage', {
+    ...execution, nodes: nodes.map(({ parentId = '', ...n }) => ({ ...n, parentId })),
+  });
+
+  // Summary for dashboards without the cell widgets (e.g. InOrbit, through upstream forwarding)
+  const summary = { cycles_ok: 0, cycles_failed: 0 };
+  const writeKeyValues = (values) => {
+    Object.assign(summary, values);
+    const ts = Date.now();
+    publish('custom', 'oro.CustomDataMessage', {
+      customField: KEY_VALUES_FIELD,
+      ts,
+      keyValuePayload: { pairs: Object.entries(values).map(([key, value]) => ({ key, value: String(value), ts })) },
+    });
+  };
+  writeKeyValues({ cell_state: 'idle', cycles_ok: 0, cycles_failed: 0 });
+
+  /** Moves arm and/or fingers to their targets over `seconds`, writing joint states. */
+  const animate = async ({ seconds, arm: armTarget, fingers: fingerTarget }) => {
+    const fromArm = arm;
+    const fromFingers = fingers;
+    const ticks = Math.max(1, Math.round((seconds * 1000) / TICK_MS));
+    for (let i = 1; i <= ticks; i += 1) {
+      const t = smoothstep(i / ticks);
+      if (armTarget) arm = lerp(fromArm, armTarget, t);
+      if (fingerTarget !== undefined) fingers = fromFingers + (fingerTarget - fromFingers) * t;
+      await writeJoints();
+      await sleep(TICK_MS);
+    }
+  };
+
+  await writeScene();
+  let cycleNumber = 0;
+  process.on('SIGINT', () => {
+    writeExecution({
+      treeId: 'full', treeName: 'Pick and place', nodes: TREE, nodeStates: [], status: 'idle',
+      currentNodeId: '', error: '', cycleId: '', cycleStartTs: Date.now(), ts: Date.now(),
+    });
+    writeKeyValues({ cell_state: 'idle', current_step: '' });
+    client.publish(`r/${ROBOT_ID}/state`, `0||${AGENT_VERSION}|${ROBOT_ID}`, { retain: true, qos: 1 });
+    client.end(false, () => process.exit(0));
+  });
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    cycleNumber += 1;
+    const lane = cycleNumber % 2 ? 'left' : 'right';
+    const cycleId = `${Date.now().toString(36)}-${lane}`;
+    const cycleStartTs = Date.now();
+    const states = {};
+    let error = '';
+    let status = 'running';
+    const execution = currentNodeId => ({
+      treeId: 'full', treeName: 'Pick and place', nodes: TREE,
+      nodeStates: Object.entries(states).map(([nodeId, state]) => ({ nodeId, state })),
+      status, currentNodeId, error, cycleId, cycleStartTs, ts: Date.now(),
+    });
+    states.full = 'running';
+    console.log(`Cycle ${cycleId}`);
+    writeKeyValues({ cell_state: 'running', lane, cycle_id: cycleId });
+
+    for (const step of cycleSteps(lane)) {
+      const { node } = step;
+      states[parentOf[node]] = 'running';
+      states[node] = 'running';
+      await writeExecution(execution(node));
+      writeKeyValues({ current_step: TREE.find(n => n.id === node).name });
+      if (step.arm) {
+        // The planner's path for this motion: tool tip along the interpolated joints
+        scene.plannedPath = Array.from({ length: 24 }, (_, i) => toolTip(lerp(arm, step.arm, smoothstep(i / 23))));
+        await writeScene();
+      }
+      await animate(step);
+
+      let result = 'succeeded';
+      if (step.perception) {
+        const { found, message, confidence, error: perceptionError } = perceptionResult(lane, cycleId);
+        publish('intrinsic/perception', 'oro.PerceptionResultMessage', message);
+        writeKeyValues({ perception_confidence: confidence === null ? '' : confidence.toFixed(3) });
+        if (!found) {
+          result = 'failed';
+          error = perceptionError;
+        }
+      }
+      if (step.graspCheck && Math.random() < 0.15) {
+        result = 'failed';
+        error = 'GrabFailed: the gripper closed empty';
+      }
+      if (step.graspCheck && result === 'succeeded') {
+        scene.attached = [{ objectId: `piece_${lane}`, link: 'wrist_roll_link', pose: pose([0, 0, 0.09]) }];
+      }
+      if (step.release) {
+        scene.attached = [];
+      }
+      if (step.arm) {
+        scene.plannedPath = [];
+      }
+      await writeScene();
+
+      // Ingest derives the cycle's steps (with their durations) from these state changes
+      states[node] = result;
+      if (result === 'failed') {
+        states[parentOf[node]] = 'failed';
+        states.full = 'failed';
+        status = 'failed';
+        await writeExecution(execution(node));
+        break;
+      }
+      // A sequence succeeds with its last child
+      const siblings = TREE.filter(n => n.parentId === parentOf[node]);
+      if (siblings[siblings.length - 1].id === node) {
+        states[parentOf[node]] = 'succeeded';
+      }
+      await writeExecution(execution(node));
+    }
+
+    const cycleSeconds = ((Date.now() - cycleStartTs) / 1000).toFixed(1);
+    if (status === 'failed') {
+      console.log(`  failed: ${error}`);
+      writeKeyValues({
+        cell_state: 'recovering', current_step: '', last_cycle_result: 'failed', last_cycle_error: error,
+        last_cycle_seconds: cycleSeconds, cycles_failed: summary.cycles_failed + 1,
+      });
+      // Recover outside of the tree (open, back to standby) before the next cycle
+      await animate({ seconds: 0.5, fingers: FINGERS.open });
+      await animate({ seconds: 2, arm: POSES.standby });
+      await sleep(2000);
+    } else {
+      states.full = 'succeeded';
+      status = 'succeeded';
+      await writeExecution(execution(''));
+      writeKeyValues({
+        cell_state: 'idle', current_step: '', last_cycle_result: 'succeeded', last_cycle_error: '',
+        last_cycle_seconds: cycleSeconds, cycles_ok: summary.cycles_ok + 1,
+      });
+      await sleep(1500);
+    }
+  }
+};
+
+run().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

@@ -57,6 +57,8 @@ Schemas.robot = new SimpleSchema({
   robotKey: { type: String, optional: true },
   // ISO 21423 reported footprint (points), merged with configured footprint by resolveFootprint()
   footprint: { type: Object, blackbox: true, optional: true },
+  // id of the robot's 3D model (`robot_models`), set by the `Robot` config kind
+  model: { type: String, optional: true },
 }, { requiredByDefault: true });
 if (Meteor.isDevelopment) {
   Robots.attachSchema(Schemas.robot);
@@ -829,6 +831,45 @@ if (Meteor.isServer) {
   );
 }
 
+/**
+ * 3D robot models, one per robot type (configured with the `RobotModel` kind):
+ *  {
+ *    _id: model id (e.g. 'ur5e'),
+ *    label: string,
+ *    urdf: URL of the URDF (absolute, or relative to the app's origin)
+ *    packages: optional { [packageName]: baseUrl }, resolves `package://` mesh URIs
+ *    jointMap: optional { [publishedJointName]: urdfJointName }
+ *  }
+ * Robots reference their model through `robots.model`.
+ */
+const RobotModels = new Mongo.Collection(COLLECTIONS.ROBOT_MODELS);
+
+/**
+ * Latest joint positions of each articulated robot, written by ingest (JointStatesModule,
+ * downsampled) or by the `Robot` kind for ghost robots:
+ *  { _id: robotId, names: [string], positions: [number], ts: number }
+ */
+const JointStates = new Mongo.Collection(COLLECTIONS.JOINT_STATES);
+
+/**
+ * Skill-based cells (e.g. Intrinsic Core), written by ingest (IntrinsicModule); see
+ * docs/intrinsic-core-widgets.md for the documents:
+ *  - executions: latest behavior tree execution per robot (_id: robotId)
+ *  - execution_steps: one doc per finished step (leaf node) { robotId, cycleId, name, type, startTs, endTs, result }
+ *  - scenes: latest scene per robot (_id: robotId): objects, frames, attached objects, planned path
+ *  - perception_results: last perception attempts per robot, with their image
+ */
+const Executions = new Mongo.Collection(COLLECTIONS.EXECUTIONS);
+const ExecutionSteps = new Mongo.Collection(COLLECTIONS.EXECUTION_STEPS);
+const Scenes = new Mongo.Collection(COLLECTIONS.SCENES);
+const PerceptionResults = new Mongo.Collection(COLLECTIONS.PERCEPTION_RESULTS);
+if (Meteor.isServer) {
+  const TWO_WEEKS_S = 14 * 24 * 3600;
+  ExecutionSteps.rawCollection().createIndex({ robotId: 1, endTs: -1 });
+  ExecutionSteps.rawCollection().createIndex({ createdAt: 1 }, { expireAfterSeconds: TWO_WEEKS_S });
+  PerceptionResults.rawCollection().createIndex({ robotId: 1, ts: -1 });
+}
+
 export {
   CameraImages,
   DataDisplayConfig,
@@ -841,8 +882,14 @@ export {
   RobotCustomDataKeyValues, // TODO Remove this one! IO-876\
   RobotCustomScript,
   RobotDiagnostics,
+  ExecutionSteps,
+  Executions,
+  JointStates,
+  PerceptionResults,
   RobotKeyValues,
   RobotLocalization,
+  RobotModels,
+  Scenes,
   RobotLogs,
   RobotModuleState,
   SpatialAnnotations,

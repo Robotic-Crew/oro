@@ -92,6 +92,7 @@ const KIND_TEST = 'Test';
 const KIND_MODULE_STATE = 'ModuleState';
 const KIND_ISO_ROBOT = 'IsoRobot';
 const KIND_ROBOT = 'Robot';
+const KIND_ROBOT_MODEL = 'RobotModel';
 
 // This constant is the only valid element id to use in apply() or clear() config calls for
 // kinds that represent "singletons", which don't have individual elmeents to configure.
@@ -298,6 +299,7 @@ export {
   KIND_MODULE_STATE,
   KIND_ISO_ROBOT,
   KIND_ROBOT,
+  KIND_ROBOT_MODEL,
   keyValueObjectValidator,
   CONFIG_API_GLOBAL_ID,
   ALPHANUMERIC_PATTERN,

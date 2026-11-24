@@ -45,6 +45,10 @@ import DiagnosticsWidget from '../robotWidgets/DiagnosticsWidget';
 // import DataBagWidget from '../robotWidgets/DataBagWidget';
 // import LogsWidget from '../robotWidgets/LogsWidget';
 import CameraView from '../robotWidgets/CameraView';
+import RobotModelWidget from '../robotWidgets/RobotModelWidget';
+import ExecutionWidget from '../robotWidgets/ExecutionWidget';
+import CycleTimelineWidget from '../robotWidgets/CycleTimelineWidget';
+import PerceptionWidget from '../robotWidgets/PerceptionWidget';
 import IncidentTimeline from '../fleetWidgets/IncidentTimeline';
 import IncidentList from '../fleetWidgets/IncidentList';
 import ActionsWidget from '../robotWidgets/ActionsWidget';
@@ -735,6 +739,27 @@ const WIDGET_FACTORY = {
       standalone
       isZeroData={isZeroData}
     />
+  ),
+
+  [WIDGET_TYPES.ROBOT_MODEL]: ({ context, scope, isZeroData }) => (
+    <RobotModelWidget
+      robotId={getRobotId(context, scope)}
+      startTs={getStartTime(context, scope)}
+      timeRangeMs={getTimeRangeMs(context, scope)}
+      isZeroData={isZeroData}
+    />
+  ),
+
+  [WIDGET_TYPES.EXECUTION]: ({ context, scope, isZeroData }) => (
+    <ExecutionWidget robotId={getRobotId(context, scope)} isZeroData={isZeroData} />
+  ),
+
+  [WIDGET_TYPES.CYCLE_TIMELINE]: ({ context, scope, isZeroData }) => (
+    <CycleTimelineWidget robotId={getRobotId(context, scope)} isZeroData={isZeroData} />
+  ),
+
+  [WIDGET_TYPES.PERCEPTION]: ({ context, scope, isZeroData }) => (
+    <PerceptionWidget robotId={getRobotId(context, scope)} isZeroData={isZeroData} />
   ),
 
   [WIDGET_TYPES.ACTIONS]: ({ config, context, scope, isZeroData }) => (
