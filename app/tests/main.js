@@ -51,6 +51,8 @@ import '../imports/server/test/maps.test.js'
 import '../imports/server/test/footprint.test.js'
 import '../imports/server/test/robotPath.test.js'
 import '../imports/server/test/plugins.test.js'
+import '../imports/server/test/plugins/robotmodel.test.js'
+import '../imports/server/test/plugins/intrinsic.test.js'
 
 describe("app", function () {
   it("package.json has correct name", async function () {

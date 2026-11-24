@@ -1,6 +1,6 @@
 {
   "name": "oro-plugin-sdk",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Contracts and registry for ORO plugins",
   "license": "Apache-2.0",
   "main": "index.js",

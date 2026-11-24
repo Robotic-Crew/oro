@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const { definePlugin } = require('oro-plugin-sdk');
 const {
-  PLUGIN_ID, VERSION, SDK_RANGE, PROTO_NAME, HELLO_SUBTOPIC, HELLO_TYPE,
+  PLUGIN_ID, VERSION, SDK_RANGE, PROTO_NAME, HELLO_SUBTOPIC, HELLO_TYPE, HELLO_COLLECTION,
 } = require('../shared');
 
 const protoSource = fs.readFileSync(path.join(__dirname, '..', 'proto', PROTO_NAME), 'utf8');
@@ -36,7 +36,7 @@ module.exports = definePlugin({
   },
   async start({ mqtt, db, log }) {
     const Hello = mqtt.lookupType(HELLO_TYPE);
-    const hello = db.collection('hello');
+    const hello = db.collection(HELLO_COLLECTION);
     mqtt.registerListener(HELLO_SUBTOPIC, async (robotId, msg) => {
       try {
         const decoded = Hello.decode(msg);

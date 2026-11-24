@@ -1,0 +1,67 @@
+{
+  "name": "oro-plugin-robotmodel",
+  "version": "0.1.0",
+  "description": "ORO plugin: 3D robot model widget (URDF), joint states (live and replay) and the cell scene",
+  "license": "Apache-2.0",
+  "oroPlugin": {
+    "id": "robotmodel"
+  },
+  "exports": {
+    "./client": "./client/index.jsx",
+    "./server": "./server/index.js",
+    "./shared": "./shared/index.js",
+    "./ingest": "./ingest/index.js",
+    "./proto/*": "./proto/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "client/",
+    "server/",
+    "shared/",
+    "ingest/",
+    "proto/",
+    "public/",
+    "scripts/",
+    "tools/"
+  ],
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "peerDependencies": {
+    "@mui/icons-material": ">=5",
+    "@mui/material": ">=5",
+    "fastest-validator": ">=1.12",
+    "moment": ">=2",
+    "oro-plugin-sdk": "^0.3.0",
+    "prop-types": ">=15",
+    "react": ">=18",
+    "three": "^0.187.0",
+    "urdf-loader": "^0.13.1"
+  },
+  "peerDependenciesMeta": {
+    "@mui/icons-material": {
+      "optional": true
+    },
+    "@mui/material": {
+      "optional": true
+    },
+    "fastest-validator": {
+      "optional": true
+    },
+    "moment": {
+      "optional": true
+    },
+    "prop-types": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "three": {
+      "optional": true
+    },
+    "urdf-loader": {
+      "optional": true
+    }
+  }
+}

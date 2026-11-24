@@ -18,14 +18,25 @@ import React from 'react';
 import { definePlugin } from 'oro-plugin-sdk';
 import protoSource from '../proto/example.proto';
 import {
-  PLUGIN_ID, VERSION, SDK_RANGE, WIDGET_HELLO, PROTO_NAME,
+  PLUGIN_ID, VERSION, SDK_RANGE, WIDGET_HELLO, PROTO_NAME, HELLO_COLLECTION, PUB_LAST_HELLO,
 } from '../shared';
 
+// Set in register(); components read core services from here
+let pluginCtx;
+let hello;
+
 function HelloWidget({ text, robotId }) {
+  // Last Hello message published by the robot on example/hello, stored by ingest
+  const lastHello = pluginCtx.meteor.useTracker(() => {
+    if (!robotId) return null;
+    pluginCtx.subscribe(PUB_LAST_HELLO, { robotId });
+    return hello.findOne({ _id: robotId });
+  }, [robotId]);
   return (
     <div style={{ padding: 16 }}>
       <strong>{text || 'Hello from the example plugin'}</strong>
       {robotId ? <div>Robot: {robotId}</div> : null}
+      {lastHello ? <div>Last message: {lastHello.text}</div> : null}
     </div>
   );
 }
@@ -35,6 +46,8 @@ export default definePlugin({
   version: VERSION,
   sdkRange: SDK_RANGE,
   register(ctx) {
+    pluginCtx = ctx;
+    hello = ctx.createCollection(HELLO_COLLECTION);
     ctx.registerProto({ name: PROTO_NAME, source: protoSource });
     ctx.registerWidget({
       type: WIDGET_HELLO,

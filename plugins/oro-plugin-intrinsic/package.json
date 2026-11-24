@@ -1,0 +1,52 @@
+{
+  "name": "oro-plugin-intrinsic",
+  "version": "0.1.0",
+  "description": "ORO plugin: behavior tree execution, cycle timeline and perception widgets for skill-based cells (e.g. Intrinsic Core)",
+  "license": "Apache-2.0",
+  "oroPlugin": {
+    "id": "intrinsic"
+  },
+  "exports": {
+    "./client": "./client/index.jsx",
+    "./server": "./server/index.js",
+    "./shared": "./shared/index.js",
+    "./ingest": "./ingest/index.js",
+    "./proto/*": "./proto/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "client/",
+    "server/",
+    "shared/",
+    "ingest/",
+    "proto/"
+  ],
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "peerDependencies": {
+    "@mui/icons-material": ">=5",
+    "@mui/material": ">=5",
+    "moment": ">=2",
+    "oro-plugin-sdk": "^0.3.0",
+    "prop-types": ">=15",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "@mui/icons-material": {
+      "optional": true
+    },
+    "@mui/material": {
+      "optional": true
+    },
+    "moment": {
+      "optional": true
+    },
+    "prop-types": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  }
+}

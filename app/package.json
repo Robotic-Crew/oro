@@ -7,7 +7,9 @@
     "test": "TEST_CLIENT=0 meteor test --once --driver-package meteortesting:mocha --port ${TEST_PORT:-3100}",
     "test:watch": "TEST_CLIENT=0 meteor test --driver-package meteortesting:mocha --port ${TEST_PORT:-3100}",
     "test-app": "TEST_WATCH=1 meteor test --full-app --driver-package meteortesting:mocha --port ${TEST_PORT:-3100}",
-    "visualize": "meteor --production --extra-packages bundle-visualizer"
+    "visualize": "meteor --production --extra-packages bundle-visualizer",
+    "postinstall": "node scripts/sync-plugin-assets.js",
+    "sync-plugin-assets": "node scripts/sync-plugin-assets.js"
   },
   "dependencies": {
     "@babel/runtime": "^7.29.10",
@@ -42,6 +44,8 @@
     "ol": "10.11.0",
     "ol-rotate-feature": "^3.3.0",
     "oro-plugin-example": "file:../plugins/oro-plugin-example",
+    "oro-plugin-intrinsic": "file:../plugins/oro-plugin-intrinsic",
+    "oro-plugin-robotmodel": "file:../plugins/oro-plugin-robotmodel",
     "oro-plugin-sdk": "file:../packages/oro-plugin-sdk",
     "plotly.js-basic-dist": "^3.7.0",
     "proj4": "^2.22.0",
@@ -56,7 +60,9 @@
     "react-router": "^6.13.0",
     "react-router-dom": "^6.13.0",
     "simpl-schema": "^3.4.9",
+    "three": "^0.187.0",
     "tss-react": "^4.9.21",
+    "urdf-loader": "^0.13.1",
     "utf-8-validate": "^5.0.10"
   },
   "devDependencies": {

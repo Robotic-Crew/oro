@@ -52,6 +52,9 @@ export const getPluginRegistry = () => {
 /**
  * Plugin settings: `Meteor.settings.public.plugins = { enabled: [ids], config: {[id]: {}} }`.
  * The server also merges `Meteor.settings.plugins.config[id]` (private config).
+ *
+ * `public.plugins.config` is sent to every browser: secrets (tokens, keys) go
+ * in the top-level `plugins.config`, which only the server reads.
  */
 export const getPluginSettings = () => {
   const pub = Meteor.settings?.public?.plugins || {};

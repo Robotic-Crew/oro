@@ -20,5 +20,7 @@
  * (`public.plugins.enabled`). Keep it in sync with server/plugins/installed.js.
  */
 import examplePlugin from 'oro-plugin-example/client';
+import intrinsicPlugin from 'oro-plugin-intrinsic/client';
+import robotmodelPlugin from 'oro-plugin-robotmodel/client';
 
-export default [examplePlugin];
+export default [examplePlugin, intrinsicPlugin, robotmodelPlugin];

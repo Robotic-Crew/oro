@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Minimal ORO plugin: a dashboard widget, a ConfigAPI kind, a proto message and an ingest listener",
   "license": "Apache-2.0",
+  "oroPlugin": {
+    "id": "example"
+  },
   "exports": {
     "./client": "./client/index.jsx",
     "./server": "./server/index.js",
@@ -11,12 +14,20 @@
     "./proto/*": "./proto/*",
     "./package.json": "./package.json"
   },
-  "files": ["client/", "server/", "shared/", "ingest/", "proto/"],
+  "files": [
+    "client/",
+    "server/",
+    "shared/",
+    "ingest/",
+    "proto/"
+  ],
   "peerDependencies": {
-    "oro-plugin-sdk": "^0.1.0",
+    "oro-plugin-sdk": "^0.3.0",
     "react": ">=18"
   },
   "peerDependenciesMeta": {
-    "react": { "optional": true }
+    "react": {
+      "optional": true
+    }
   }
 }

@@ -1,0 +1,144 @@
+<?xml version="1.0"?>
+<!--
+  Demo 6-DOF arm for the 3D Model widget, built from primitives only (no meshes), so it ships
+  with ORO and loads instantly. See docs/visualizer.md.
+-->
+<robot name="demo_arm">
+  <material name="graphite"><color rgba="0.22 0.24 0.27 1"/></material>
+  <material name="silver"><color rgba="0.75 0.77 0.80 1"/></material>
+  <material name="amber"><color rgba="0.93 0.60 0.13 1"/></material>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0.04"/>
+      <geometry><cylinder radius="0.13" length="0.08"/></geometry>
+      <material name="graphite"/>
+    </visual>
+  </link>
+
+  <joint name="shoulder_pan" type="revolute">
+    <parent link="base_link"/>
+    <child link="shoulder_link"/>
+    <origin xyz="0 0 0.08"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.1416" upper="3.1416" effort="100" velocity="2"/>
+  </joint>
+  <link name="shoulder_link">
+    <visual>
+      <origin xyz="0 0 0.07"/>
+      <geometry><cylinder radius="0.08" length="0.14"/></geometry>
+      <material name="silver"/>
+    </visual>
+  </link>
+
+  <joint name="shoulder_lift" type="revolute">
+    <parent link="shoulder_link"/>
+    <child link="upper_arm_link"/>
+    <origin xyz="0 0 0.14"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" effort="100" velocity="2"/>
+  </joint>
+  <link name="upper_arm_link">
+    <visual>
+      <origin rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.075" length="0.16"/></geometry>
+      <material name="graphite"/>
+    </visual>
+    <visual>
+      <origin xyz="0 0 0.2"/>
+      <geometry><box size="0.09 0.09 0.4"/></geometry>
+      <material name="amber"/>
+    </visual>
+  </link>
+
+  <joint name="elbow" type="revolute">
+    <parent link="upper_arm_link"/>
+    <child link="forearm_link"/>
+    <origin xyz="0 0 0.4"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.6" upper="2.6" effort="60" velocity="2"/>
+  </joint>
+  <link name="forearm_link">
+    <visual>
+      <origin rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.065" length="0.14"/></geometry>
+      <material name="graphite"/>
+    </visual>
+    <visual>
+      <origin xyz="0 0 0.17"/>
+      <geometry><box size="0.075 0.075 0.34"/></geometry>
+      <material name="amber"/>
+    </visual>
+  </link>
+
+  <joint name="wrist_pitch" type="revolute">
+    <parent link="forearm_link"/>
+    <child link="wrist_pitch_link"/>
+    <origin xyz="0 0 0.34"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" effort="20" velocity="3"/>
+  </joint>
+  <link name="wrist_pitch_link">
+    <visual>
+      <origin rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.05" length="0.11"/></geometry>
+      <material name="graphite"/>
+    </visual>
+    <visual>
+      <origin xyz="0 0 0.05"/>
+      <geometry><cylinder radius="0.04" length="0.1"/></geometry>
+      <material name="silver"/>
+    </visual>
+  </link>
+
+  <joint name="wrist_roll" type="revolute">
+    <parent link="wrist_pitch_link"/>
+    <child link="wrist_roll_link"/>
+    <origin xyz="0 0 0.1"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.1416" upper="3.1416" effort="20" velocity="3"/>
+  </joint>
+  <link name="wrist_roll_link">
+    <visual>
+      <origin xyz="0 0 0.015"/>
+      <geometry><cylinder radius="0.045" length="0.03"/></geometry>
+      <material name="graphite"/>
+    </visual>
+    <visual>
+      <origin xyz="0 0 0.04"/>
+      <geometry><box size="0.12 0.04 0.02"/></geometry>
+      <material name="silver"/>
+    </visual>
+  </link>
+
+  <joint name="finger_left" type="prismatic">
+    <parent link="wrist_roll_link"/>
+    <child link="finger_left_link"/>
+    <origin xyz="0 0 0.05"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="0.005" upper="0.05" effort="10" velocity="0.1"/>
+  </joint>
+  <link name="finger_left_link">
+    <visual>
+      <origin xyz="0 0 0.035"/>
+      <geometry><box size="0.015 0.03 0.07"/></geometry>
+      <material name="graphite"/>
+    </visual>
+  </link>
+
+  <joint name="finger_right" type="prismatic">
+    <parent link="wrist_roll_link"/>
+    <child link="finger_right_link"/>
+    <origin xyz="0 0 0.05"/>
+    <axis xyz="-1 0 0"/>
+    <limit lower="0.005" upper="0.05" effort="10" velocity="0.1"/>
+    <mimic joint="finger_left"/>
+  </joint>
+  <link name="finger_right_link">
+    <visual>
+      <origin xyz="0 0 0.035"/>
+      <geometry><box size="0.015 0.03 0.07"/></geometry>
+      <material name="graphite"/>
+    </visual>
+  </link>
+</robot>

@@ -15,31 +15,20 @@
  */
 
 /**
- * Unit tests for ingest plugin loading (src/plugins), using oro-plugin-example.
+ * Unit tests for ingest plugin loading (src/plugins), using oro-plugin-example
+ * and inline plugins.
  */
 import mongoUnit from 'mongo-unit';
 import { expect } from 'chai';
-import { loadSync, parse } from 'protobufjs';
+import { definePlugin, SDK_VERSION } from 'oro-plugin-sdk';
 // ORO modules
 import MongoManager from '../src/mongo';
 import { loadIngestPlugins, startIngestPlugins } from '../src/plugins';
+import TimeSeriesStore from '../src/shared/timeseriesStore';
+import { COLLECTIONS } from '../src/shared/constants';
+import makeMqtt from './mocks/pluginMqtt';
 
 const settingsWith = (enabled) => ({ plugins: { enabled, config: {} } });
-
-// MQTT stand-in with its own proto root, capturing listeners
-const makeMqtt = () => {
-  const root = loadSync('src/shared/oro.proto');
-  const listeners = {};
-  return {
-    root,
-    listeners,
-    addProtoSource: (source) => parse(source, root),
-    registerListener: (subtopic, cb) => { listeners[subtopic] = cb; },
-    registerSystemListener: () => {},
-    publish: async () => {},
-    lookupType: (name) => root.lookupType(name),
-  };
-};
 
 describe('Ingest plugins', () => {
   beforeEach(async () => {
@@ -80,5 +69,92 @@ describe('Ingest plugins', () => {
       settings: settingsWith(['nope']),
       addProtoSource: mqtt.addProtoSource,
     })).to.throw(/plugin:nope.*not installed/);
+  });
+
+  it('lets plugins write their own time series fields only', async () => {
+    let ctx;
+    const plugin = definePlugin({
+      id: 'demo',
+      version: '1.0.0',
+      sdkRange: `^${SDK_VERSION}`,
+      register() {},
+      async start(startCtx) { ctx = startCtx; },
+    });
+    const mqtt = makeMqtt();
+    const settings = settingsWith(['demo']);
+    const registry = loadIngestPlugins({ settings, plugins: [plugin], addProtoSource: mqtt.addProtoSource });
+    const mongo = new MongoManager();
+    const runtime = await startIngestPlugins(registry, { mqtt, mongo, settings });
+
+    const ts = Date.now() - 1000;
+    await ctx.timeseries.write({ robotId: 'r1', ts, fields: { demo_a: 1, demo_b: 2 } });
+    // Far-future robot clocks are stamped now
+    await ctx.timeseries.write({ robotId: 'r1', ts: Date.now() + 3600e3, fields: { demo_a: 3 } });
+    await runtime.flushTimeseries();
+    const store = new TimeSeriesStore({ db: mongo.db, collectionName: COLLECTIONS.TIMESERIES });
+    const rows = await store.rawQuery({ meta: { robotId: 'r1', src: 'demo' }, fields: ['demo_a', 'demo_b'] });
+    expect(rows[0]).to.deep.equal({ ts, fields: { demo_a: 1, demo_b: 2 } });
+    expect(rows).to.have.length(2);
+    expect(rows[1].ts).to.be.at.most(Date.now());
+    // Core queries (no src) don't see plugin points
+    expect(await store.rawQuery({ meta: { robotId: 'r1' }, fields: ['demo_a'] })).to.be.empty;
+    await runtime.stop();
+
+    for (const fields of [{ batteryPercentage: 1 }, { 'demo_a.b': 1 }, {}]) {
+      let error;
+      try {
+        await ctx.timeseries.write({ robotId: 'r1', ts, fields });
+      } catch (e) {
+        error = e;
+      }
+      expect(error, JSON.stringify(fields)).to.match(/start with 'demo_'/);
+    }
+    expect(ctx.db.collection('things').collectionName).to.equal('plugin_demo_things');
+  });
+
+  describe('MQTT listeners', () => {
+    const startDemo = async ({ coreSubtopics = [] } = {}) => {
+      let ctx;
+      const plugin = definePlugin({
+        id: 'demo',
+        version: '1.0.0',
+        sdkRange: `^${SDK_VERSION}`,
+        register() {},
+        async start(startCtx) { ctx = startCtx; },
+      });
+      const mqtt = makeMqtt({ coreSubtopics });
+      const settings = settingsWith(['demo']);
+      const registry = loadIngestPlugins({ settings, plugins: [plugin], addProtoSource: mqtt.addProtoSource });
+      const runtime = await startIngestPlugins(registry, { mqtt, mongo: new MongoManager(), settings });
+      await runtime.stop();
+      return { ctx, mqtt };
+    };
+
+    it('only exposes listeners and type lookup', async () => {
+      const { ctx } = await startDemo();
+      expect(Object.keys(ctx.mqtt).sort()).to.deep.equal(['lookupType', 'registerListener']);
+    });
+
+    it('refuses core and system subtopics, allows others', async () => {
+      const { ctx, mqtt } = await startDemo({ coreSubtopics: ['ros/odom'] });
+      expect(() => ctx.mqtt.registerListener('ros/odom', () => {})).to.throw(/belongs to core/);
+      expect(() => ctx.mqtt.registerListener('system/x', () => {})).to.throw(/invalid subtopic/);
+      expect(() => ctx.mqtt.registerListener('demo/#', () => {})).to.throw(/invalid subtopic/);
+      expect(() => ctx.mqtt.registerListener('demo/a', () => {}, { maxBytes: 0 })).to.throw(/maxBytes/);
+      ctx.mqtt.registerListener('demo/a', () => {});
+      ctx.mqtt.registerListener('ros/joint_states', () => {});
+      expect(mqtt.listeners).to.have.keys('demo/a', 'ros/joint_states');
+    });
+
+    it('drops oversized messages and contains listener errors', async () => {
+      const { ctx, mqtt } = await startDemo();
+      const seen = [];
+      ctx.mqtt.registerListener('demo/a', (robotId, msg) => { seen.push(msg.length); }, { maxBytes: 4 });
+      ctx.mqtt.registerListener('demo/b', () => { throw new Error('boom'); });
+      await mqtt.listeners['demo/a']('r1', Buffer.alloc(4));
+      await mqtt.listeners['demo/a']('r1', Buffer.alloc(5));
+      expect(seen).to.deep.equal([4]);
+      await mqtt.listeners['demo/b']('r1', Buffer.alloc(1)); // doesn't throw
+    });
   });
 });

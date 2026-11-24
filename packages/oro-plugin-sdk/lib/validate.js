@@ -20,6 +20,18 @@ const PLUGIN_ID_RE = /^[a-z][a-z0-9]{1,31}$/;
 const KIND_RE = /^[A-Z][A-Za-z0-9]+$/;
 const WIDGET_NAME_RE = /^[A-Za-z][A-Za-z0-9]*$/;
 const PROTO_IMPORT_RE = /^\s*import\s/m;
+const PROTO_EXTEND_RE = /^\s*extend\s/m;
+const PROTO_PACKAGE_RE = /^\s*package\s+([A-Za-z0-9_.]+)\s*;/gm;
+
+// Ids that would read as core names in collections, endpoints, topics or protos
+const RESERVED_PLUGIN_IDS = Object.freeze([
+  'core', 'oro', 'system', 'plugin', 'plugins', 'admin', 'meteor', 'inorbit', 'robot', 'robots',
+]);
+
+/** Proto source without comments, so commented-out statements can't fool the checks. */
+function stripProtoComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+}
 
 class PluginError extends Error {
   constructor(message, pluginId) {
@@ -43,6 +55,9 @@ function validatePluginShape(plugin) {
     throw new PluginError(
       `Invalid plugin id ${JSON.stringify(id)}: must match ${PLUGIN_ID_RE}`
     );
+  }
+  if (RESERVED_PLUGIN_IDS.includes(id)) {
+    throw new PluginError(`Plugin id ${JSON.stringify(id)} is reserved`, id);
   }
   if (!isValidVersion(version)) {
     throw new PluginError(`Invalid version ${JSON.stringify(version)}: must be x.y.z`, id);
@@ -92,15 +107,19 @@ function validateProto(pluginId, { name, source } = {}) {
   if (typeof source !== 'string' || !source) {
     throw new PluginError(`Proto ${name} has no source`, pluginId);
   }
-  const packageRe = new RegExp(`^\\s*package\\s+oro\\.${pluginId}\\s*;`, 'm');
-  if (!packageRe.test(source)) {
-    throw new PluginError(`Proto ${name} must declare 'package oro.${pluginId};'`, pluginId);
+  const code = stripProtoComments(source);
+  const packages = [...code.matchAll(PROTO_PACKAGE_RE)].map((m) => m[1]);
+  if (packages.length !== 1 || packages[0] !== `oro.${pluginId}`) {
+    throw new PluginError(`Proto ${name} must declare exactly 'package oro.${pluginId};'`, pluginId);
   }
-  if (PROTO_IMPORT_RE.test(source)) {
+  if (PROTO_IMPORT_RE.test(code)) {
     throw new PluginError(
       `Proto ${name} must not use import statements; reference core types by full name (oro.X)`,
       pluginId
     );
+  }
+  if (PROTO_EXTEND_RE.test(code)) {
+    throw new PluginError(`Proto ${name} must not extend other messages`, pluginId);
   }
 }
 
@@ -111,3 +130,4 @@ exports.validateWidgetType = validateWidgetType;
 exports.validateKind = validateKind;
 exports.validateProto = validateProto;
 exports.PLUGIN_ID_RE = PLUGIN_ID_RE;
+exports.RESERVED_PLUGIN_IDS = RESERVED_PLUGIN_IDS;

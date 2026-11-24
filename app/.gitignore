@@ -16,3 +16,6 @@ unit_server.xml
 # Meteor Modern-Tools build context directories
 */build-assets*
 */build-chunks*
+
+# Plugin assets, copied from node_modules/oro-plugin-*/public by scripts/sync-plugin-assets.js
+public/plugins/

@@ -24,13 +24,31 @@ const {
   validateProto,
 } = require('./validate');
 
+const { ENDPOINT_NAME_RE, pluginEndpointName } = require('./names');
+
 const RUNTIMES = Object.freeze({ CLIENT: 'client', SERVER: 'server', INGEST: 'ingest' });
+
+// Authorization policies core enforces before a plugin endpoint runs.
+// 'robot.view': caller is logged in, params is an object with a `robotId` and
+// the user can view that robot.
+const ENDPOINT_ACCESS = Object.freeze({ ROBOT_VIEW: 'robot.view' });
+const ENDPOINT_ACCESS_VALUES = Object.values(ENDPOINT_ACCESS);
+// Authorization policies core enforces on every ConfigAPI call of a plugin kind.
+// 'fleet.configure': the user can configure the fleet (or is a system user).
+const CONFIG_KIND_ACCESS = Object.freeze({ FLEET_CONFIGURE: 'fleet.configure' });
+const CONFIG_KIND_ACCESS_VALUES = Object.values(CONFIG_KIND_ACCESS);
 const RUNTIME_VALUES = Object.values(RUNTIMES);
 
 // Which registration functions each runtime exposes on `ctx`.
 const REGISTRATIONS_BY_RUNTIME = {
   client: ['registerProto', 'registerWidget'],
-  server: ['registerProto', 'registerWidgetType', 'registerConfigKind'],
+  server: [
+    'registerProto',
+    'registerWidgetType',
+    'registerConfigKind',
+    'registerPublication',
+    'registerMethod',
+  ],
   ingest: ['registerProto'],
 };
 
@@ -70,6 +88,8 @@ function createRegistry({ runtime, reservedWidgetTypes = [], reservedKinds = [],
   const widgetConfigConverters = {};
   const configKinds = {};
   const protos = [];
+  const publications = [];
+  const methods = [];
 
   function markRead() {
     read = true;
@@ -143,7 +163,7 @@ function createRegistry({ runtime, reservedWidgetTypes = [], reservedKinds = [],
         if (configConverter) widgetConfigConverters[type] = Object.freeze({ ...configConverter });
       },
 
-      registerConfigKind({ kind, createHandler } = {}) {
+      registerConfigKind({ kind, access, createHandler } = {}) {
         assertOpen(pluginId, 'registerConfigKind');
         validateKind(pluginId, kind);
         if (reserved.kinds.has(kind)) {
@@ -155,11 +175,57 @@ function createRegistry({ runtime, reservedWidgetTypes = [], reservedKinds = [],
             pluginId
           );
         }
+        if (!CONFIG_KIND_ACCESS_VALUES.includes(access)) {
+          throw new PluginError(
+            `Config kind ${kind} needs access set to one of: ${CONFIG_KIND_ACCESS_VALUES.join(', ')}`,
+            pluginId
+          );
+        }
         if (typeof createHandler !== 'function') {
           throw new PluginError(`Config kind ${kind} needs a createHandler function`, pluginId);
         }
-        configKinds[kind] = { pluginId, createHandler };
+        configKinds[kind] = Object.freeze({ pluginId, access, createHandler });
       },
+    };
+
+    function addEndpoint(list, label, { name, access, handler } = {}) {
+      if (typeof name !== 'string' || !ENDPOINT_NAME_RE.test(name)) {
+        throw new PluginError(
+          `Invalid ${label} name ${JSON.stringify(name)}: must match ${ENDPOINT_NAME_RE}`,
+          pluginId
+        );
+      }
+      if (!ENDPOINT_ACCESS_VALUES.includes(access)) {
+        throw new PluginError(
+          `${label} ${name} needs access set to one of: ${ENDPOINT_ACCESS_VALUES.join(', ')}`,
+          pluginId
+        );
+      }
+      if (typeof handler !== 'function') {
+        throw new PluginError(`${label} ${name} needs a handler function`, pluginId);
+      }
+      if (list.some((e) => e.pluginId === pluginId && e.name === name)) {
+        throw new PluginError(`${label} ${name} is already registered`, pluginId);
+      }
+      list.push(
+        Object.freeze({
+          pluginId,
+          name,
+          fullName: pluginEndpointName(pluginId, name),
+          access,
+          handler,
+        })
+      );
+    }
+
+    all.registerPublication = (def) => {
+      assertOpen(pluginId, 'registerPublication');
+      addEndpoint(publications, 'Publication', def);
+    };
+
+    all.registerMethod = (def) => {
+      assertOpen(pluginId, 'registerMethod');
+      addEndpoint(methods, 'Method', def);
     };
 
     const allowed = REGISTRATIONS_BY_RUNTIME[runtime];
@@ -279,21 +345,32 @@ function createRegistry({ runtime, reservedWidgetTypes = [], reservedKinds = [],
       return Object.freeze({ ...widgetConfigConverters });
     },
 
+    /** Server: `{ [kind]: { pluginId, access, createHandler } }`. */
     getConfigKinds() {
       markRead();
-      const result = {};
-      for (const [kind, { createHandler }] of Object.entries(configKinds)) {
-        result[kind] = createHandler;
-      }
-      return Object.freeze(result);
+      return Object.freeze({ ...configKinds });
     },
 
     getProtos() {
       markRead();
       return Object.freeze([...protos]);
     },
+
+    /** Server: `[{ pluginId, name, fullName, access, handler }]`. */
+    getPublications() {
+      markRead();
+      return Object.freeze([...publications]);
+    },
+
+    /** Server: `[{ pluginId, name, fullName, access, handler }]`. */
+    getMethods() {
+      markRead();
+      return Object.freeze([...methods]);
+    },
   };
 }
 
 exports.RUNTIMES = RUNTIMES;
+exports.ENDPOINT_ACCESS = ENDPOINT_ACCESS;
+exports.CONFIG_KIND_ACCESS = CONFIG_KIND_ACCESS;
 exports.createRegistry = createRegistry;

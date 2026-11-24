@@ -53,7 +53,14 @@ module.exports = defineConfig((Meteor) => {
       // ../packages) under node_modules instead of their real path, so they
       // resolve and build exactly as when installed from a registry.
       symlinks: false,
-    },	  
+    },
+    // The persistent cache treats node_modules as immutable (keyed by package
+    // version), so edits to the symlinked plugin sources would be ignored.
+    experiments: {
+      cache: {
+        snapshot: { unmanagedPaths: [PLUGIN_PACKAGES] },
+      },
+    },
     module: {
       rules: [
         // Meteor's swc rule skips node_modules; compile plugin packages too.

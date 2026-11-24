@@ -47,6 +47,8 @@ COPY --chown=node:node .meteor/ ./.meteor/
 COPY --from=packages --chown=node:node . /home/node/packages
 COPY --from=plugins --chown=node:node . /home/node/plugins
 
+# postinstall copies plugin assets to public/plugins (scripts/sync-plugin-assets.js)
+COPY --chown=node:node scripts/sync-plugin-assets.js ./scripts/
 RUN meteor npm ci
 
 # Copy the rest of the source tree (filtered by .dockerignore).

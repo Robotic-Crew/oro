@@ -15,17 +15,19 @@
  */
 
 import { Mongo } from 'meteor/mongo';
-import { SDK_VERSION } from 'oro-plugin-sdk';
+import { SDK_VERSION, pluginCollectionName, pluginFieldPrefix } from 'oro-plugin-sdk';
 import {
   getPluginRegistry, getPluginSettings, makePluginLogger, setReservedConfigKinds,
 } from '../../lib/plugins/registry';
 import { CORE_KINDS } from '../configAPI/configAPI';
 import { addProtoSource } from '../mqtt';
-import OroRoles from '../roles';
+import TimeSeriesManager from '../timeseries';
+import { registerPluginEndpoints } from './endpoints';
 import {
   ValidationError, SchemaError, AuthorizationError, NotFoundError,
 } from '../../shared/configAPI';
-import { RESOURCE_SINGLETONS, ACCESS_LEVEL_CONFIGURE, isSystemUser } from '../../shared/roles';
+import { isSystemUser } from '../../shared/roles';
+import { canConfigureFleet } from './configKinds';
 import installedPlugins from './installed';
 
 const errors = Object.freeze({
@@ -34,31 +36,64 @@ const errors = Object.freeze({
 
 const auth = Object.freeze({
   isSystemUser: (user) => isSystemUser(user),
-  canConfigureFleet: async (user) => Boolean(user) && (
-    isSystemUser(user) || new OroRoles().canAccessSystemElement(
-      user._id, RESOURCE_SINGLETONS.FLEET, ACCESS_LEVEL_CONFIGURE,
-    )
-  ),
+  canConfigureFleet,
 });
 
 // Meteor can't define the same collection twice in a process, so collections
 // are cached by name (matters when tests load plugins more than once).
 const collections = {};
-export const pluginCollectionName = (pluginId, name) => `plugin_${pluginId}_${name}`;
 const getCollection = (pluginId, name) => {
-  if (typeof name !== 'string' || !/^[a-z][a-z0-9_]*$/.test(name)) {
-    throw new Error(`[plugin:${pluginId}] invalid collection name ${JSON.stringify(name)}`);
-  }
   const fullName = pluginCollectionName(pluginId, name);
   if (!collections[fullName]) collections[fullName] = new Mongo.Collection(fullName);
   return collections[fullName];
+};
+
+const TIMESERIES_MAX_LIMIT = 20000;
+// Longest time range one rawQuery may scan
+export const TIMESERIES_MAX_WINDOW_MS = 24 * 3600 * 1000;
+const FIELD_RE = /^[A-Za-z0-9_]+$/;
+
+/**
+ * Read access to the robot time series, limited to the plugin's own fields
+ * (`<id>_*`). No authorization here: plugins call it from access-gated
+ * endpoints.
+ */
+const makeTimeseries = (pluginId) => {
+  const prefix = pluginFieldPrefix(pluginId);
+  return Object.freeze({
+    rawQuery: async ({ robotId, fields, startTs, endTs, limit = TIMESERIES_MAX_LIMIT } = {}) => {
+      if (typeof robotId !== 'string' || !robotId) {
+        throw new ValidationError('timeseries.rawQuery needs a robotId');
+      }
+      if (!Array.isArray(fields) || fields.length === 0
+          || !fields.every((f) => typeof f === 'string' && FIELD_RE.test(f) && f.startsWith(prefix))) {
+        throw new ValidationError(`timeseries fields must be non-empty and start with '${prefix}'`);
+      }
+      if (!Number.isFinite(startTs) || !Number.isFinite(endTs) || endTs <= startTs) {
+        throw new ValidationError('timeseries.rawQuery needs numeric startTs < endTs');
+      }
+      if (endTs - startTs > TIMESERIES_MAX_WINDOW_MS) {
+        throw new ValidationError(
+          `timeseries.rawQuery range is limited to ${TIMESERIES_MAX_WINDOW_MS / 3600000} h`,
+        );
+      }
+      return new TimeSeriesManager().rawQuery({
+        // Plugin points are tagged with their plugin (see ingest/src/plugins)
+        meta: { robotId, src: pluginId },
+        fields,
+        startTs,
+        endTs,
+        limit: Math.min(TIMESERIES_MAX_LIMIT, Math.max(1, Number(limit) || TIMESERIES_MAX_LIMIT)),
+      });
+    },
+  });
 };
 
 const commonContext = (plugin, settings) => ({
   runtime: 'server',
   sdkVersion: SDK_VERSION,
   pluginId: plugin.id,
-  settings: settings.configFor(plugin.id),
+  settings: Object.freeze(settings.configFor(plugin.id)),
   log: makePluginLogger(plugin.id),
 });
 
@@ -83,9 +118,11 @@ export const loadServerPlugins = ({
       errors,
       auth,
       createCollection: (name) => getCollection(plugin.id, name),
+      timeseries: makeTimeseries(plugin.id),
     }),
   });
   registry.getProtos().forEach(({ source }) => addProtoSource(source));
+  registerPluginEndpoints(registry);
   return registry;
 };
 
@@ -96,6 +133,7 @@ export const startServerPlugins = async ({ mqtt, registry = getPluginRegistry() 
   const settings = getPluginSettings();
   await registry.start((plugin) => ({
     ...commonContext(plugin, settings),
+    timeseries: makeTimeseries(plugin.id),
     mqtt: {
       lookupType: (fullName) => mqtt.lookupType(fullName),
       publishProtobuf: (...args) => mqtt.publishProtobuf(...args),

@@ -1,0 +1,85 @@
+// Copyright 2026 Robotic Crew
+//
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+
+syntax = "proto3";
+
+// Messages of the robotmodel plugin. See the plugin README.
+package oro.robotmodel;
+
+//
+// Joint states of an articulated robot (e.g. an arm), like ROS sensor_msgs/JointState.
+// Positions only: radians for revolute/continuous joints, meters for prismatic ones.
+// Sent through topic: r/<robot_id>/ros/joint_states
+//
+message JointStatesMessage {
+  // Timestamp (milliseconds) the joint positions were sampled
+  int64 ts = 1;
+  // Joint names, as declared in the robot's URDF
+  repeated string names = 2;
+  // Joint positions, in the same order as `names`
+  repeated double positions = 3;
+}
+
+// Position (meters) and orientation (quaternion; all zeros means identity)
+message Pose3D {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  double qx = 4;
+  double qy = 5;
+  double qz = 6;
+  double qw = 7;
+}
+
+message Point3D {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message SceneObject {
+  string id = 1;
+  string name = 2;
+  // box | cylinder | sphere
+  string shape = 3;
+  // box: [x, y, z]; cylinder: [radius, length] (along z); sphere: [radius]
+  repeated double size = 4;
+  Pose3D pose = 5;
+  // "#rrggbb"
+  string color = 6;
+}
+
+message SceneFrame {
+  string id = 1;
+  string name = 2;
+  Pose3D pose = 3;
+}
+
+// An object carried by the robot: drawn at `pose` relative to `link` (a URDF link)
+message AttachedObject {
+  string object_id = 1;
+  string link = 2;
+  Pose3D pose = 3;
+}
+
+// The cell around the robot: poses are in the robot's base frame (the URDF root).
+// Sent through topic: r/<robot_id>/robotmodel/scene
+message SceneMessage {
+  int64 ts = 1;
+  repeated SceneObject objects = 2;
+  repeated SceneFrame frames = 3;
+  repeated AttachedObject attached = 4;
+  // Planned path of the tool (TCP) for the motion in progress; empty when not moving
+  repeated Point3D planned_path = 5;
+}

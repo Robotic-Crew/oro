@@ -354,4 +354,51 @@ describe('TimeSeriesStore', () => {
       expect(rows[0].fields.temperature).to.equal(24); // max(20,22,24)
     });
   });
+
+  describe('rawQuery()', () => {
+    const T0 = Date.now() - 60_000;
+
+    it('validates fields and limit', async () => {
+      await expect(store.rawQuery({ fields: [] })).to.be.rejectedWith(/fields/);
+      await expect(store.rawQuery({ fields: ['x'], limit: 0 })).to.be.rejectedWith(/limit/);
+    });
+
+    it('returns raw points ascending, filtered by meta, range and field presence', async () => {
+      await store.write({ ts: T0 + 300, meta: { robotId: 'a' }, fields: { j1: 3, j2: 30 } });
+      await store.write({ ts: T0 + 100, meta: { robotId: 'a' }, fields: { j1: 1 } });
+      await store.write({ ts: T0 + 200, meta: { robotId: 'a' }, fields: { other: 9 } });
+      await store.write({ ts: T0 + 150, meta: { robotId: 'b' }, fields: { j1: 99 } });
+      await store.write({ ts: T0 + 900, meta: { robotId: 'a' }, fields: { j1: 9 } });
+      const rows = await store.rawQuery({
+        meta: { robotId: 'a' }, fields: ['j1', 'j2'], startTs: T0, endTs: T0 + 900,
+      });
+      expect(rows).to.deep.equal([
+        { ts: T0 + 100, fields: { j1: 1 } },
+        { ts: T0 + 300, fields: { j1: 3, j2: 30 } },
+      ]);
+    });
+
+    it('keeps the earliest points up to limit', async () => {
+      for (let i = 0; i < 5; i += 1) {
+        await store.write({ ts: T0 + i, meta: { robotId: 'a' }, fields: { j1: i } });
+      }
+      const rows = await store.rawQuery({ meta: { robotId: 'a' }, fields: ['j1'], limit: 2 });
+      expect(rows.map((r) => r.fields.j1)).to.deep.equal([0, 1]);
+    });
+
+    it('keeps plugin points (meta.src) apart from core queries', async () => {
+      await store.writeMany([
+        { ts: T0 + 1, meta: { robotId: 'a' }, fields: { j1: 1 } },
+        { ts: T0 + 2, meta: { robotId: 'a', src: 'demo' }, fields: { j1: 2 } },
+      ]);
+      const core = await store.rawQuery({ meta: { robotId: 'a' }, fields: ['j1'] });
+      expect(core.map((r) => r.fields.j1)).to.deep.equal([1]);
+      const plugin = await store.rawQuery({ meta: { robotId: 'a', src: 'demo' }, fields: ['j1'] });
+      expect(plugin.map((r) => r.fields.j1)).to.deep.equal([2]);
+      const agg = await store.aggregateQuery({
+        meta: { robotId: 'a' }, aggregations: [{ field: 'j1', op: 'maximum' }], granularitySecs: 3600,
+      });
+      expect(agg[0].fields.j1).to.equal(1);
+    });
+  });
 });

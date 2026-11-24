@@ -66,6 +66,11 @@ class TimeSeriesManager {
    */
   aggregateQuery = async (args) => this._store.aggregateQuery(args);
 
+  /**
+   * Raw (not aggregated) points. Delegated to the store
+   */
+  rawQuery = async (args) => this._store.rawQuery(args);
+
   async _meteorQueryTimeseries({ attributeIds, aggregations, robotId, startTs, endTs, intervalMinutes }) {
     if (!robotId) {
       return {};

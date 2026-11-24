@@ -36,3 +36,4 @@ lmieulet:meteor-coverage
 accounts-passwordless
 email
 aldeed:simple-schema@2.0.0
+ddp-rate-limiter        # Rate limits plugin endpoints (imports/server/plugins/endpoints.js)

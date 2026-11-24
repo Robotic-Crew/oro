@@ -22,13 +22,18 @@ const { version } = require('../package.json');
 
 exports.PLUGIN_ID = 'example';
 exports.VERSION = version;
-exports.SDK_RANGE = '^0.1.0';
+exports.SDK_RANGE = '^0.3.0';
 
 exports.WIDGET_HELLO = 'example:hello';
 exports.KIND_NOTE = 'ExampleNote';
 exports.HELLO_SUBTOPIC = 'example/hello';
 exports.HELLO_TYPE = 'oro.example.Hello';
 exports.PROTO_NAME = 'example.proto';
+
+// Collection (plugin_example_hello) and publication (plugin.example.lastHello)
+// with the last Hello message of each robot, written by the ingest entry
+exports.HELLO_COLLECTION = 'hello';
+exports.PUB_LAST_HELLO = 'lastHello';
 
 // fastest-validator schema for the Hello widget config
 exports.HELLO_CONFIG_SCHEMA = {

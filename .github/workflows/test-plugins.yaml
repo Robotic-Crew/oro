@@ -1,0 +1,30 @@
+name: Tests
+
+on:
+  push:
+    paths:
+    - .github/workflows/test-plugins.yaml
+    - 'plugins/**'
+    - 'packages/**'
+
+jobs:
+  test-plugins:
+    name: Plugin Tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: [oro-plugin-intrinsic, oro-plugin-robotmodel]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # Plugin unit tests use node:test and the SDK from packages/ (no install).
+      # Their app and ingest integration tests run in test-app and test-ingest.
+      - name: Run tests
+        working-directory: plugins/${{ matrix.plugin }}
+        run: npm test

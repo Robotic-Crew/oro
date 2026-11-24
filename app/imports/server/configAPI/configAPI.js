@@ -65,6 +65,7 @@ import {
 } from '../../shared/configAPI';
 import { getSystemUser } from '../../shared/roles';
 import { getPluginRegistry } from '../../lib/plugins/registry';
+import { wrapPluginKindHandler } from '../plugins/configKinds';
 // import PeerApiKindHandler from './peerApiKindHandler';
 
 const configObjectApplyValidator = new Validator().compile(buildConfigObjectApplySchema());
@@ -150,11 +151,11 @@ export default class ConfigAPI {
     };
     if (!kindsHandlersMap) {
       // Kinds contributed by plugins (see lib/plugins/registry.js)
-      Object.entries(getPluginRegistry().getConfigKinds()).forEach(([kind, createHandler]) => {
+      Object.entries(getPluginRegistry().getConfigKinds()).forEach(([kind, def]) => {
         if (kind in this._kindsHandlers) {
           throw new Error(`Handler for kind ${kind} is already registered`);
         }
-        this._kindsHandlers[kind] = createHandler(this);
+        this._kindsHandlers[kind] = wrapPluginKindHandler({ kind, ...def }, def.createHandler(this));
       });
     }
     isObject(peerApiKinds) && Object.keys(peerApiKinds).forEach((kind) => {

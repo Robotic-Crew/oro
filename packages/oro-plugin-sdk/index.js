@@ -18,6 +18,7 @@ const { version: SDK_VERSION } = require('./package.json');
 const { satisfies } = require('./lib/semver');
 const { PluginError, validatePluginShape } = require('./lib/validate');
 const registry = require('./lib/registry');
+const names = require('./lib/names');
 
 /**
  * Declares a plugin entry for one runtime (client, server or ingest).
@@ -26,7 +27,7 @@ const registry = require('./lib/registry');
  * @param {object} def
  * @param {string} def.id lowercase alphanumeric, shared by all runtime entries
  * @param {string} def.version plugin version, x.y.z
- * @param {string} def.sdkRange supported SDK versions, e.g. '^0.1.0'
+ * @param {string} def.sdkRange supported SDK versions, e.g. '^0.3.0'
  * @param {(ctx: object) => void} def.register sync; register widgets, kinds, protos
  * @param {(ctx: object) => Promise<void>} [def.start] async; runs once core is up
  */
@@ -46,3 +47,8 @@ exports.PluginError = PluginError;
 exports.definePlugin = definePlugin;
 exports.createRegistry = createRegistry;
 exports.satisfies = satisfies;
+exports.ENDPOINT_ACCESS = registry.ENDPOINT_ACCESS;
+exports.CONFIG_KIND_ACCESS = registry.CONFIG_KIND_ACCESS;
+exports.pluginCollectionName = names.pluginCollectionName;
+exports.pluginEndpointName = names.pluginEndpointName;
+exports.pluginFieldPrefix = names.pluginFieldPrefix;

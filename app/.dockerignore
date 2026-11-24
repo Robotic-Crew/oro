@@ -5,6 +5,8 @@
 **/.rsdoctor
 **/build-assets
 **/build-chunks
+# Generated in the image by the postinstall script (scripts/sync-plugin-assets.js)
+**/public/plugins
 
 # Secrets — must never enter the image
 **/settings.json

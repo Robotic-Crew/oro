@@ -31,6 +31,8 @@
     "mqtt": "^5.16.1",
     "object-hash": "^3.0.0",
     "oro-plugin-example": "file:../plugins/oro-plugin-example",
+    "oro-plugin-intrinsic": "file:../plugins/oro-plugin-intrinsic",
+    "oro-plugin-robotmodel": "file:../plugins/oro-plugin-robotmodel",
     "oro-plugin-sdk": "file:../packages/oro-plugin-sdk",
     "protobufjs": "^8.8.1"
   },

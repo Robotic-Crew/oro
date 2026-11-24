@@ -19,5 +19,7 @@
  * settings (`plugins.enabled`).
  */
 import examplePlugin from 'oro-plugin-example/ingest';
+import intrinsicPlugin from 'oro-plugin-intrinsic/ingest';
+import robotmodelPlugin from 'oro-plugin-robotmodel/ingest';
 
-export default [examplePlugin];
+export default [examplePlugin, intrinsicPlugin, robotmodelPlugin];

@@ -360,6 +360,9 @@ export default class OroMqtt {
   /**
    * Register a listener to a given MQTT robot-specific subtopic
    */
+  /** Subtopics that have robot message listeners. */
+  listenerSubtopics = () => Object.keys(this._listeners);
+
   registerListener = (subtopic, callback) => {
     // TODO Sanity checks
     if (!(subtopic in this._listeners)) {

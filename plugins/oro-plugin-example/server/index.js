@@ -18,6 +18,7 @@ import { definePlugin } from 'oro-plugin-sdk';
 import protoSource from '../proto/example.proto';
 import {
   PLUGIN_ID, VERSION, SDK_RANGE, WIDGET_HELLO, KIND_NOTE, PROTO_NAME, HELLO_CONFIG_SCHEMA,
+  HELLO_COLLECTION, PUB_LAST_HELLO,
 } from '../shared';
 
 /**
@@ -34,7 +35,10 @@ function createNoteHandler(ctx, notes) {
   };
   const idOf = (configObject) => {
     const id = String(configObject?.metadata?.id || '');
-    if (!id) throw new errors.ValidationError('metadata.id is required');
+    // Same as core's ID_PATTERN: ids end up in Mongo queries and URLs
+    if (!/^[a-zA-Z0-9_-]{1,255}$/.test(id)) {
+      throw new errors.ValidationError('metadata.id must match /^[a-zA-Z0-9_-]+$/');
+    }
     return id;
   };
 
@@ -91,7 +95,16 @@ export default definePlugin({
     const notes = ctx.createCollection('notes');
     ctx.registerConfigKind({
       kind: KIND_NOTE,
+      // Core checks this before every list/apply/clear; the handler checks again
+      access: 'fleet.configure',
       createHandler: () => createNoteHandler(ctx, notes),
+    });
+    // Core checks the caller can view `robotId` before the handler runs
+    const hello = ctx.createCollection(HELLO_COLLECTION);
+    ctx.registerPublication({
+      name: PUB_LAST_HELLO,
+      access: 'robot.view',
+      handler: async ({ robotId }) => hello.find({ _id: robotId }),
     });
   },
 });

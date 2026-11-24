@@ -95,6 +95,20 @@ class TimeSeriesStore {
   };
 
   /**
+   * Write several data points in one round-trip.
+   * @param {Array<{ ts: number, meta?: object, fields: object }>} points
+   */
+  writeMany = async (points) => {
+    if (!points.length) return;
+    const docs = points.map(({ ts, meta, fields }) => ({
+      [TIME_FIELD]: new Date(ts),
+      [META_FIELD]: meta ?? {},
+      ...fields,
+    }));
+    await this._db.collection(this._name).insertMany(docs, { ordered: false });
+  };
+
+  /**
    * Aggregate fields of a time series into fixed-size time windows.
    *
    * @param {object}   args
@@ -123,15 +137,7 @@ class TimeSeriesStore {
       throw new Error('granularitySecs must be a positive number');
     }
 
-    const match = {};
-    for (const [k, v] of Object.entries(meta ?? {})) {
-      match[`${META_FIELD}.${k}`] = v;
-    }
-    if (startTs != null || endTs != null) {
-      match[TIME_FIELD] = {};
-      if (startTs != null) match[TIME_FIELD].$gte = new Date(startTs);
-      if (endTs != null) match[TIME_FIELD].$lt = new Date(endTs);
-    }
+    const match = buildMatch({ meta, startTs, endTs });
 
     const groupStage = {
       _id: {
@@ -176,6 +182,57 @@ class TimeSeriesStore {
     const docs = await this._db.collection(this._name).aggregate(pipeline).toArray();
     return docs.map((d) => ({ ts: d.ts.getTime(), fields: d.fields }));
   };
+
+  /**
+   * Raw (not aggregated) points of some fields, e.g. to replay a high-rate series. Only documents
+   * carrying at least one of `fields` are returned.
+   *
+   * @param {object}   args
+   * @param {object}   [args.meta]    Filter on the metaField (as in aggregateQuery).
+   * @param {string[]} args.fields    Fields to return.
+   * @param {number}   [args.startTs] Inclusive lower bound, epoch ms.
+   * @param {number}   [args.endTs]   Exclusive upper bound, epoch ms.
+   * @param {number}   [args.limit]   Max number of points; the earliest ones are kept.
+   *
+   * @returns {Promise<Array<{ ts: number, fields: object }>>} Sorted ascending by `ts`.
+   */
+  rawQuery = async ({ meta, fields, startTs, endTs, limit = 10000 }) => {
+    if (!Array.isArray(fields) || fields.length === 0) {
+      throw new Error('fields must be a non-empty array');
+    }
+    if (!(limit > 0)) {
+      throw new Error('limit must be a positive number');
+    }
+    const match = buildMatch({ meta, startTs, endTs });
+    match.$or = fields.map((field) => ({ [field]: { $exists: true } }));
+    const projection = { _id: 0, [TIME_FIELD]: 1 };
+    fields.forEach((field) => { projection[field] = 1; });
+    const docs = await this._db.collection(this._name)
+      .find(match, { projection })
+      .sort({ [TIME_FIELD]: 1 })
+      .limit(limit)
+      .toArray();
+    return docs.map(({ [TIME_FIELD]: time, ...rest }) => ({ ts: time.getTime(), fields: rest }));
+  };
+}
+
+/**
+ * $match on the metaField (flattened into dotted keys) and a [startTs, endTs) time range.
+ * Points written by plugins carry `meta.src` (the plugin id); they only match
+ * queries that ask for that `src`, so core queries never scan plugin buckets' fields.
+ */
+function buildMatch({ meta, startTs, endTs }) {
+  const match = {};
+  for (const [k, v] of Object.entries(meta ?? {})) {
+    match[`${META_FIELD}.${k}`] = v;
+  }
+  if (!(meta && 'src' in meta)) match[`${META_FIELD}.src`] = { $exists: false };
+  if (startTs != null || endTs != null) {
+    match[TIME_FIELD] = {};
+    if (startTs != null) match[TIME_FIELD].$gte = new Date(startTs);
+    if (endTs != null) match[TIME_FIELD].$lt = new Date(endTs);
+  }
+  return match;
 }
 
 export default TimeSeriesStore;

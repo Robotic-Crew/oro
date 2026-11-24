@@ -180,30 +180,40 @@ test('config kinds: format, reserved, duplicates across plugins', () => {
   const createHandler = () => ({});
   const reg = createRegistry({ runtime: 'server', reservedKinds: () => ['Robot'] });
   reg.load({
-    plugins: [plugin({ register: (ctx) => ctx.registerConfigKind({ kind: 'DemoNote', createHandler }) })],
+    plugins: [plugin({ register: (ctx) => ctx.registerConfigKind({ kind: 'DemoNote', access: 'fleet.configure', createHandler }) })],
     enabled: ['demo'],
   });
-  assert.equal(reg.getConfigKinds().DemoNote, createHandler);
+  assert.equal(reg.getConfigKinds().DemoNote.createHandler, createHandler);
+  assert.equal(reg.getConfigKinds().DemoNote.access, 'fleet.configure');
+  assert.equal(reg.getConfigKinds().DemoNote.pluginId, 'demo');
 
   const load = (plugins, enabled) =>
     createRegistry({ runtime: 'server', reservedKinds: () => ['Robot'] }).load({ plugins, enabled });
   throwsPluginError(
-    () => load([plugin({ register: (ctx) => ctx.registerConfigKind({ kind: 'robot', createHandler }) })], ['demo']),
+    () => load([plugin({ register: (ctx) => ctx.registerConfigKind({ kind: 'robot', access: 'fleet.configure', createHandler }) })], ['demo']),
     /Invalid config kind/
   );
   throwsPluginError(
-    () => load([plugin({ register: (ctx) => ctx.registerConfigKind({ kind: 'Robot', createHandler }) })], ['demo']),
+    () => load([plugin({ register: (ctx) => ctx.registerConfigKind({ kind: 'Robot', access: 'fleet.configure', createHandler }) })], ['demo']),
     /reserved by core/
   );
   throwsPluginError(
     () => load(
       [
-        plugin({ id: 'aa', register: (ctx) => ctx.registerConfigKind({ kind: 'Shared', createHandler }) }),
-        plugin({ id: 'bb', register: (ctx) => ctx.registerConfigKind({ kind: 'Shared', createHandler }) }),
+        plugin({ id: 'aa', register: (ctx) => ctx.registerConfigKind({ kind: 'Shared', access: 'fleet.configure', createHandler }) }),
+        plugin({ id: 'bb', register: (ctx) => ctx.registerConfigKind({ kind: 'Shared', access: 'fleet.configure', createHandler }) }),
       ],
       ['aa', 'bb']
     ),
     /already registered by plugin aa/
+  );
+  throwsPluginError(
+    () => load([plugin({ register: (ctx) => ctx.registerConfigKind({ kind: 'DemoNote', createHandler }) })], ['demo']),
+    /needs access/
+  );
+  throwsPluginError(
+    () => load([plugin({ register: (ctx) => ctx.registerConfigKind({ kind: 'DemoNote', access: 'anyone', createHandler }) })], ['demo']),
+    /needs access/
   );
 });
 
@@ -223,6 +233,27 @@ test('protos must use the plugin package and no imports', () => {
   throwsPluginError(() => load(PROTO.replace('oro.demo', 'oro')), /package oro\.demo/);
   throwsPluginError(() => load(PROTO.replace('oro.demo', 'oro.other')), /package oro\.demo/);
   throwsPluginError(() => load(`import "oro.proto";\n${PROTO}`), /import/);
+  // A commented-out package line doesn't count, and only one package is allowed
+  throwsPluginError(
+    () => load(PROTO.replace('package oro.demo;', '// package oro.demo;\npackage oro;')),
+    /package oro\.demo/
+  );
+  throwsPluginError(
+    () => load(PROTO.replace('package oro.demo;', '/* package oro.demo; */ package oro;')),
+    /package oro\.demo/
+  );
+  throwsPluginError(() => load(`${PROTO}\npackage oro;\n`), /package oro\.demo/);
+  throwsPluginError(() => load(`${PROTO}extend oro.Core { string x = 99; }\n`), /extend/);
+  // Comments mentioning import are fine
+  createRegistry({ runtime: 'ingest' }).load({
+    plugins: [plugin({ register: (ctx) => ctx.registerProto({ name: 'demo.proto', source: `// import nothing\n${PROTO}` }) })],
+    enabled: ['demo'],
+  });
+});
+
+test('reserved plugin ids are rejected', () => {
+  throwsPluginError(() => definePlugin(plugin({ id: 'core' })), /reserved/);
+  throwsPluginError(() => definePlugin(plugin({ id: 'system' })), /reserved/);
 });
 
 test('registration functions are runtime specific', () => {
@@ -233,7 +264,7 @@ test('registration functions are runtime specific', () => {
     /not available in the ingest runtime/
   );
   throwsPluginError(
-    () => tryIn('client', (ctx) => ctx.registerConfigKind({ kind: 'Demo', createHandler() {} })),
+    () => tryIn('client', (ctx) => ctx.registerConfigKind({ kind: 'Demo', access: 'fleet.configure', createHandler() {} })),
     /not available in the client runtime/
   );
   throwsPluginError(
@@ -281,4 +312,70 @@ test('start runs hooks sequentially, in load order, once', async () => {
   await reg.start((p) => ({ tag: p.id }));
   assert.deepEqual(order, ['aa:aa', 'cc:cc']);
   await assert.rejects(reg.start(), /already started/);
+});
+
+test('server publications and methods: named, access-gated, unique, server only', () => {
+  const handler = async () => {};
+  const reg = createRegistry({ runtime: 'server' });
+  reg.load({
+    plugins: [plugin({
+      register(ctx) {
+        ctx.registerPublication({ name: 'notes', access: 'robot.view', handler });
+        ctx.registerMethod({ name: 'notes', access: 'robot.view', handler });
+      },
+    })],
+    enabled: ['demo'],
+  });
+  assert.deepEqual(reg.getPublications().map((p) => [p.fullName, p.access, p.pluginId]), [
+    ['plugin.demo.notes', 'robot.view', 'demo'],
+  ]);
+  assert.equal(reg.getMethods()[0].handler, handler);
+  assert.ok(Object.isFrozen(reg.getMethods()[0]));
+
+  const tryRegister = (register, runtime = 'server') =>
+    createRegistry({ runtime }).load({ plugins: [plugin({ register })], enabled: ['demo'] });
+  throwsPluginError(
+    () => tryRegister((ctx) => ctx.registerMethod({ name: 'Bad-Name', access: 'robot.view', handler })),
+    /Invalid Method name/
+  );
+  throwsPluginError(
+    () => tryRegister((ctx) => ctx.registerMethod({ name: 'm', handler })),
+    /needs access/
+  );
+  throwsPluginError(
+    () => tryRegister((ctx) => ctx.registerPublication({ name: 'p', access: 'anyone', handler })),
+    /needs access/
+  );
+  throwsPluginError(
+    () => tryRegister((ctx) => ctx.registerPublication({ name: 'p', access: 'robot.view' })),
+    /needs a handler/
+  );
+  throwsPluginError(
+    () => tryRegister((ctx) => {
+      ctx.registerMethod({ name: 'm', access: 'robot.view', handler });
+      ctx.registerMethod({ name: 'm', access: 'robot.view', handler });
+    }),
+    /already registered/
+  );
+  throwsPluginError(
+    () => tryRegister((ctx) => ctx.registerMethod({ name: 'm', access: 'robot.view', handler }), 'client'),
+    /not available in the client runtime/
+  );
+  throwsPluginError(
+    () => tryRegister((ctx) => ctx.registerPublication({ name: 'p', access: 'robot.view', handler }), 'ingest'),
+    /not available in the ingest runtime/
+  );
+});
+
+test('endpoints cannot be registered after load', async () => {
+  let saved;
+  const reg = createRegistry({ runtime: 'server' });
+  reg.load({
+    plugins: [plugin({
+      register: (ctx) => { saved = ctx; },
+      start: async () => saved.registerMethod({ name: 'm', access: 'robot.view', handler() {} }),
+    })],
+    enabled: ['demo'],
+  });
+  await assert.rejects(reg.start(), /registration closed/);
 });

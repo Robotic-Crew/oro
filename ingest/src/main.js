@@ -76,6 +76,7 @@ let mongo;
 let redis;
 let storage;
 let mqtt;
+let pluginRuntime;
 let peerClient;
 let metrics;
 let queue;
@@ -197,7 +198,7 @@ async function run() {
   // }
 
   // Plugins run in both ISO and non-ISO modes
-  await startIngestPlugins(plugins, { mqtt, mongo, settings });
+  pluginRuntime = await startIngestPlugins(plugins, { mqtt, mongo, settings });
 
   const derivedAttributesService = new DerivedAttributesService({});
   await derivedAttributesService.init({ workerQueue: queue });
@@ -218,6 +219,8 @@ async function shutdown() {
   upstreamModule && await upstreamModule.shutdown();
   isoRobots && await isoRobots.shutdown();
   mqtt && await mqtt.shutdown();
+  // Writes buffered plugin time series points while Mongo is still up
+  pluginRuntime && await pluginRuntime.stop();
   storage && await storage.shutdown();
   mongo && await mongo.shutdown();
   redis && await redis.shutdown();
